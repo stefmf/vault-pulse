@@ -79,7 +79,7 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.colorBase === "custom") {
 			new Setting(containerEl)
 				.setName("Custom hex color")
-				.setDesc("Hex color like #39d353. Used when Color palette is set to Custom.")
+				.setDesc("Hex color like #39d353. Used when color palette is set to custom.")
 				.addText((text) =>
 					text
 						.setPlaceholder("#39d353")
@@ -147,7 +147,7 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Include tags")
 			.setDesc(
-				"Comma-separated list of tags. If set, only files with AT LEAST ONE of these tags count. Leave empty to include all files. Leading # is optional."
+				"Comma-separated list of tags. If set, only files with at least one of these tags count. Leave empty to include all files. Leading # is optional."
 			)
 			.addText((text) =>
 				text

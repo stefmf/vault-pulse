@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-04-14
+
 ### Added
 
 - `CHANGELOG.md` tracking release notes per version.
@@ -15,6 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Release workflow now runs on Node 22 LTS (was Node 20; Node 20 is removed from GitHub runners on 2026-09-16).
+
+### Fixed
+
+- Address `ObsidianReviewBot` feedback on community-plugin submission ([obsidianmd/obsidian-releases#11926](https://github.com/obsidianmd/obsidian-releases/pull/11926)):
+  - Elastic-scroll bounce no longer writes to `element.style.transform` / `element.style.willChange` directly — values flow through `setCssProps` and a `.vault-pulse-elastic-active` class.
+  - Settings descriptions use sentence case ("color palette", "custom", and lowercased "at least one").
+  - `activateView` now awaits `workspace.revealLeaf`.
+  - `VaultPulseView.onOpen` / `onClose` no longer marked `async` without an `await` — they return `Promise<void>` explicitly.
 
 ## [0.1.3] - 2026-04-13
 
