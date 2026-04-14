@@ -35,7 +35,7 @@
 	scrollbar-width: thin;
 	padding: var(--size-4-3) var(--size-4-3) calc(var(--size-4-3) + 6px);
 	border-bottom: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
+	/* No explicit background — inherits the sidebar pane's natural color. */
 }
 
 .vault-pulse-heatmap {
@@ -149,7 +149,6 @@
 	font-size: var(--vp-label-font);
 	color: var(--text-muted);
 	border-bottom: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
 	flex: 0 0 auto;
 }
 
@@ -184,7 +183,6 @@
 	-webkit-overflow-scrolling: touch;
 	display: flex;
 	flex-direction: column;
-	background: var(--background-primary);
 }
 
 .vault-pulse-detail-header {
@@ -196,7 +194,9 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 	position: sticky;
 	top: 0;
-	background: var(--background-primary);
+	/* Matches the natural sidebar pane background so the sticky header
+	   blends with surrounding panels and covers rows scrolling under it. */
+	background: var(--background-secondary);
 	z-index: 1;
 	box-shadow: 0 2px 8px transparent;
 	transition: box-shadow 150ms ease;
