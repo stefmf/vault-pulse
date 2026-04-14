@@ -1,0 +1,17 @@
+# Let Git detect text files, store them with LF internally, and check them
+# out with LF on every platform. Keeps Windows contributors from committing
+# CRLF through editor defaults.
+* text=auto eol=lf
+
+# Explicit binary marking for common image and font formats so Git skips
+# line-ending normalization and text-diff on them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
