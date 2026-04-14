@@ -53,7 +53,7 @@ export class VaultPulseView extends ItemView {
 		return "layout-grid";
 	}
 
-	async onOpen(): Promise<void> {
+	onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass("vault-pulse-view");
 		this.gridEl = this.contentEl.createDiv("vault-pulse-grid-wrapper");
@@ -78,6 +78,7 @@ export class VaultPulseView extends ItemView {
 		});
 
 		this.refresh();
+		return Promise.resolve();
 	}
 
 	refresh(): void {
@@ -223,7 +224,7 @@ export class VaultPulseView extends ItemView {
 		}
 	}
 
-	async onClose(): Promise<void> {
+	onClose(): Promise<void> {
 		if (this.interactions) {
 			this.interactions.teardown();
 			this.interactions = null;
@@ -236,6 +237,7 @@ export class VaultPulseView extends ItemView {
 			this.detailElasticCleanup();
 			this.detailElasticCleanup = null;
 		}
+		return Promise.resolve();
 	}
 }
 

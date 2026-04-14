@@ -1,5 +1,10 @@
 /* Vault Pulse — sidebar heatmap styles */
 
+.vault-pulse-elastic-active {
+	will-change: transform;
+	transform: var(--vp-elastic-transform, none);
+}
+
 .vault-pulse-view.view-content {
 	--vp-cell-size: 11px;
 	--vp-cell-gap: 3px;

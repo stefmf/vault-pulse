@@ -62,10 +62,11 @@ export function attachElasticScroll(
 	let releaseTimer: number | null = null;
 
 	const applyTransform = (offset: number) => {
-		inner.style.transform =
+		const translate =
 			axis === "x"
 				? `translate3d(${offset}px, 0, 0)`
 				: `translate3d(0, ${offset}px, 0)`;
+		inner.setCssProps({ "--vp-elastic-transform": translate });
 	};
 
 	const step = (now: number) => {
@@ -84,8 +85,8 @@ export function attachElasticScroll(
 		if (Math.abs(y) > SETTLE_Y || Math.abs(v) > SETTLE_V) {
 			rafId = requestAnimationFrame(step);
 		} else {
-			inner.style.transform = "";
-			inner.style.willChange = "";
+			inner.removeClass("vault-pulse-elastic-active");
+			inner.setCssProps({ "--vp-elastic-transform": "" });
 			running = false;
 			rafId = null;
 		}
@@ -97,7 +98,7 @@ export function attachElasticScroll(
 		y = 0;
 		v = initialVelocity;
 		lastFrame = performance.now();
-		inner.style.willChange = "transform";
+		inner.addClass("vault-pulse-elastic-active");
 		rafId = requestAnimationFrame(step);
 	};
 
@@ -153,8 +154,8 @@ export function attachElasticScroll(
 		scroller.removeEventListener("wheel", onWheel);
 		if (rafId !== null) cancelAnimationFrame(rafId);
 		if (releaseTimer !== null) window.clearTimeout(releaseTimer);
-		inner.style.transform = "";
-		inner.style.willChange = "";
+		inner.removeClass("vault-pulse-elastic-active");
+		inner.setCssProps({ "--vp-elastic-transform": "" });
 		running = false;
 	};
 }
