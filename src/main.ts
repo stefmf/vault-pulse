@@ -34,7 +34,7 @@ export default class VaultPulsePlugin extends Plugin {
 			defaultMod: true,
 		});
 
-		this.addRibbonIcon("layout-grid", "Open Vault Pulse", () => {
+		this.addRibbonIcon("layout-grid", "Open vault pulse", () => {
 			void this.activateView();
 		});
 

@@ -46,7 +46,7 @@ export class VaultPulseView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Vault Pulse";
+		return "Vault pulse";
 	}
 
 	getIcon(): string {
