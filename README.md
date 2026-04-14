@@ -126,4 +126,4 @@ See [`AGENTS.md`](AGENTS.md) for contributor conventions.
 
 ## License
 
-[MIT](LICENSE) © 2026 Stef
+[MIT](LICENSE) © 2026 Stefmf
