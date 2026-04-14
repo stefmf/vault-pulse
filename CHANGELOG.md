@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-14
+
+### Fixed
+
+- Round-two `ObsidianReviewBot` feedback on [obsidianmd/obsidian-releases#11926](https://github.com/obsidianmd/obsidian-releases/pull/11926): remaining sentence-case violations in the ribbon tooltip, view display text, `Window length` description (reworded to avoid the "windows" brand collision), and the `Include tags` placeholder.
+
 ## [0.1.4] - 2026-04-14
 
 ### Added

@@ -98,7 +98,7 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Window length")
 			.setDesc(
-				"How many days the heatmap spans. Shorter windows give a narrower grid but finer detail."
+				"How many days the heatmap spans. Shorter ranges give a narrower grid with finer detail."
 			)
 			.addDropdown((dd) =>
 				dd
@@ -151,7 +151,7 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("project, journal")
+					.setPlaceholder("Project, journal")
 					.setValue(this.plugin.settings.includeTags)
 					.onChange(async (value) => {
 						this.plugin.settings.includeTags = value;
