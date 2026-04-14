@@ -3,12 +3,16 @@ import type VaultPulsePlugin from "./main";
 
 export type ActivitySource = "modified" | "created" | "combined";
 export type ColorBase = "theme" | "green" | "heat" | "sunset" | "custom";
+export type WindowDays = 90 | 180 | 365;
 
 export interface VaultPulseSettings {
 	activitySource: ActivitySource;
 	colorBase: ColorBase;
 	customHexColor: string;
 	weekStart: 0 | 1;
+	windowDays: WindowDays;
+	excludeFolders: string;
+	includeTags: string;
 }
 
 export const DEFAULT_SETTINGS: VaultPulseSettings = {
@@ -16,6 +20,9 @@ export const DEFAULT_SETTINGS: VaultPulseSettings = {
 	colorBase: "theme",
 	customHexColor: "#39d353",
 	weekStart: 0,
+	windowDays: 365,
+	excludeFolders: "",
+	includeTags: "",
 };
 
 const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
@@ -72,7 +79,7 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.colorBase === "custom") {
 			new Setting(containerEl)
 				.setName("Custom hex color")
-				.setDesc("Hex color like #39d353. Used when Color base is set to Custom.")
+				.setDesc("Hex color like #39d353. Used when Color palette is set to Custom.")
 				.addText((text) =>
 					text
 						.setPlaceholder("#39d353")
@@ -89,6 +96,26 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl)
+			.setName("Window length")
+			.setDesc(
+				"How many days the heatmap spans. Shorter windows give a narrower grid but finer detail."
+			)
+			.addDropdown((dd) =>
+				dd
+					.addOption("90", "90 days")
+					.addOption("180", "180 days")
+					.addOption("365", "365 days")
+					.setValue(String(this.plugin.settings.windowDays))
+					.onChange(async (value) => {
+						this.plugin.settings.windowDays = parseInt(
+							value,
+							10
+						) as WindowDays;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("Week starts on")
 			.setDesc("First day of the week in the grid.")
 			.addDropdown((dd) =>
@@ -98,6 +125,36 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 					.setValue(String(this.plugin.settings.weekStart))
 					.onChange(async (value) => {
 						this.plugin.settings.weekStart = parseInt(value, 10) as 0 | 1;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Exclude folders")
+			.setDesc(
+				"Comma-separated list of folder paths to skip when counting activity. Matches by prefix — e.g. Archive skips Archive/... but not My-Archive/..."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Archive, _templates")
+					.setValue(this.plugin.settings.excludeFolders)
+					.onChange(async (value) => {
+						this.plugin.settings.excludeFolders = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Include tags")
+			.setDesc(
+				"Comma-separated list of tags. If set, only files with AT LEAST ONE of these tags count. Leave empty to include all files. Leading # is optional."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("project, journal")
+					.setValue(this.plugin.settings.includeTags)
+					.onChange(async (value) => {
+						this.plugin.settings.includeTags = value;
 						await this.plugin.saveSettings();
 					})
 			);

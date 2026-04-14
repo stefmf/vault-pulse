@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { setTooltip } from "obsidian";
 import {
 	computeGridStart,
 	computeMonthLabels,
@@ -28,7 +29,7 @@ export function renderHeatmap(ctx: RenderContext): void {
 		today = DateTime.local().startOf("day"),
 	} = ctx;
 
-	const gridStart = computeGridStart(today, settings.weekStart);
+	const gridStart = computeGridStart(today, settings.weekStart, settings.windowDays);
 	const cols = totalColumns(gridStart, today);
 
 	container.style.setProperty("--vp-total-cols", String(cols));
@@ -62,9 +63,6 @@ function renderMonthLabelRow(
 	for (const label of labels) {
 		const span = document.createElement("span");
 		span.className = "vault-pulse-month-label";
-		// Prefix the year at transitions (e.g. the first January after a
-		// December in the window). Skip the very first label so we don't
-		// duplicate context the user already has from the current date.
 		if (prevYear !== -1 && label.year !== prevYear) {
 			span.textContent = `${label.year} · ${label.name}`;
 			span.classList.add("is-year-transition");
@@ -139,8 +137,6 @@ function renderCellsGrid(
 			"aria-label",
 			`${cursor.toFormat("MMM d")}, ${count} ${count === 1 ? "file" : "files"}`
 		);
-		// Roving tabindex: default -1 here; the view sets tabindex=0 on the
-		// currently selected cell so Tab reaches it (and only it).
 		cell.tabIndex = -1;
 
 		frag.appendChild(cell);
@@ -159,9 +155,7 @@ export function renderEmptyState(container: HTMLElement, message: string): void 
 }
 
 /**
- * Render the "Less ▫▫▫▫▫ More" legend row. Static markup; the cells' colors
- * come from the same --vp-level-{0..4} variables set on the view root,
- * so the legend follows theme/palette changes automatically.
+ * Render the "Less ▫▫▫▫▫ More" legend row.
  */
 export function renderLegend(container: HTMLElement): void {
 	container.empty();
@@ -186,4 +180,75 @@ export function renderLegend(container: HTMLElement): void {
 	more.className = "vault-pulse-legend-label";
 	more.textContent = "More";
 	container.appendChild(more);
+}
+
+export interface SparklineOptions {
+	container: HTMLElement;
+	activityMap: ActivityMap;
+	today?: DateTime;
+	days?: number;
+	onSelect: (iso: string, count: number) => void;
+}
+
+/**
+ * Render the last-N-days sparkline — a compact bar chart of recent activity
+ * that stays visible even when the user has scrolled the main heatmap left.
+ *
+ * Bars use the interactive-accent color for "active" days and the border color
+ * for empty days. Height scales with count relative to the window's max.
+ * Clicking a bar selects that day (routed through the same onCellSelect
+ * callback the grid uses).
+ */
+export function renderSparkline(options: SparklineOptions): void {
+	const {
+		container,
+		activityMap,
+		today = DateTime.local().startOf("day"),
+		days = 30,
+		onSelect,
+	} = options;
+
+	container.empty();
+
+	interface Bar {
+		iso: string;
+		count: number;
+		date: DateTime;
+	}
+
+	const bars: Bar[] = [];
+	for (let i = days - 1; i >= 0; i--) {
+		const date = today.minus({ days: i });
+		const iso = toISODate(date);
+		const count = activityMap.get(iso)?.count ?? 0;
+		bars.push({ iso, count, date });
+	}
+
+	const maxCount = Math.max(1, ...bars.map((b) => b.count));
+
+	for (const bar of bars) {
+		const el = document.createElement("div");
+		el.className = "vault-pulse-sparkline-bar";
+		el.dataset.date = bar.iso;
+		el.dataset.count = String(bar.count);
+		el.setAttribute("role", "button");
+		el.tabIndex = -1;
+
+		const pct = bar.count === 0 ? 6 : 15 + (bar.count / maxCount) * 85;
+		el.style.height = `${pct}%`;
+
+		if (bar.count > 0) {
+			el.classList.add("is-active");
+		}
+
+		el.addEventListener("click", () => onSelect(bar.iso, bar.count));
+		el.addEventListener("mouseover", () => {
+			const tooltip = `${bar.date.toFormat("MMM d")} · ${bar.count} ${
+				bar.count === 1 ? "file" : "files"
+			}`;
+			setTooltip(el, tooltip, { placement: "top" });
+		});
+
+		container.appendChild(el);
+	}
 }

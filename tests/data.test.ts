@@ -181,3 +181,134 @@ describe("buildActivityMap", () => {
 		expect(day?.files).toHaveLength(3);
 	});
 });
+
+describe("buildActivityMap with custom windowDays", () => {
+	it("produces a smaller map for a 90-day window", () => {
+		const map = buildActivityMap(
+			mkSource([]),
+			settings({ windowDays: 90 }),
+			{ today: TODAY }
+		);
+		// 90 day window + up to 6 days of week-alignment slack.
+		expect(map.size).toBeGreaterThanOrEqual(90);
+		expect(map.size).toBeLessThanOrEqual(96);
+	});
+
+	it("ignores activity outside the shorter window", () => {
+		// File created 200 days ago — inside a 365-day window, outside a 90-day window.
+		const oldTs = TODAY.minus({ days: 200 }).toMillis();
+		const file = mkFile("old.md", oldTs, oldTs);
+		const mapLong = buildActivityMap(
+			mkSource([file]),
+			settings({ windowDays: 365 }),
+			{ today: TODAY }
+		);
+		const mapShort = buildActivityMap(
+			mkSource([file]),
+			settings({ windowDays: 90 }),
+			{ today: TODAY }
+		);
+		const long = [...mapLong.values()].reduce((a, d) => a + d.count, 0);
+		const short = [...mapShort.values()].reduce((a, d) => a + d.count, 0);
+		expect(long).toBeGreaterThan(0);
+		expect(short).toBe(0);
+	});
+});
+
+describe("buildActivityMap filters", () => {
+	function modTs(iso: string) {
+		return DateTime.fromISO(iso).toMillis();
+	}
+
+	it("excludes files whose path starts with an excluded folder", () => {
+		const today = modTs("2026-04-12");
+		const files = [
+			mkFile("work/meeting.md", today, today),
+			mkFile("Archive/old.md", today, today),
+			mkFile("Archive/deep/nested.md", today, today),
+		];
+		const map = buildActivityMap(
+			mkSource(files),
+			settings({ excludeFolders: "Archive" }),
+			{ today: TODAY }
+		);
+		expect(map.get("2026-04-12")?.count).toBe(1);
+		expect(map.get("2026-04-12")?.files[0].path).toBe("work/meeting.md");
+	});
+
+	it("exclude matches prefix only, not middle-of-path", () => {
+		const today = modTs("2026-04-12");
+		const files = [
+			mkFile("My Archive/note.md", today, today), // NOT excluded
+			mkFile("Archive/note.md", today, today), // excluded
+		];
+		const map = buildActivityMap(
+			mkSource(files),
+			settings({ excludeFolders: "Archive" }),
+			{ today: TODAY }
+		);
+		expect(map.get("2026-04-12")?.count).toBe(1);
+		expect(map.get("2026-04-12")?.files[0].path).toBe("My Archive/note.md");
+	});
+
+	it("handles multiple comma-separated excluded folders", () => {
+		const today = modTs("2026-04-12");
+		const files = [
+			mkFile("work/a.md", today, today),
+			mkFile("Archive/b.md", today, today),
+			mkFile("_templates/c.md", today, today),
+		];
+		const map = buildActivityMap(
+			mkSource(files),
+			settings({ excludeFolders: "Archive, _templates" }),
+			{ today: TODAY }
+		);
+		expect(map.get("2026-04-12")?.count).toBe(1);
+	});
+
+	it("includeTags requires at least one matching tag (OR logic)", () => {
+		const today = modTs("2026-04-12");
+		const a = mkFile("a.md", today, today);
+		const b = mkFile("b.md", today, today);
+		const c = mkFile("c.md", today, today);
+		const cacheFor = (f: TFile): CachedMetadata => {
+			if (f.path === "a.md")
+				return { frontmatter: { tags: ["project"] } };
+			if (f.path === "b.md")
+				return { frontmatter: { tags: ["journal", "misc"] } };
+			if (f.path === "c.md") return { frontmatter: { tags: ["other"] } };
+			return {};
+		};
+		const map = buildActivityMap(
+			mkSource([a, b, c], cacheFor),
+			settings({ includeTags: "project, journal" }),
+			{ today: TODAY }
+		);
+		// a has project, b has journal → both count. c doesn't match.
+		expect(map.get("2026-04-12")?.count).toBe(2);
+	});
+
+	it("strips leading # on include tags", () => {
+		const today = modTs("2026-04-12");
+		const file = mkFile("a.md", today, today);
+		const map = buildActivityMap(
+			mkSource([file], () => ({ frontmatter: { tags: ["project"] } })),
+			settings({ includeTags: "#project" }),
+			{ today: TODAY }
+		);
+		expect(map.get("2026-04-12")?.count).toBe(1);
+	});
+
+	it("no filters (defaults) includes all files", () => {
+		const today = modTs("2026-04-12");
+		const files = [
+			mkFile("work/a.md", today, today),
+			mkFile("Archive/b.md", today, today),
+			mkFile("anywhere/c.md", today, today),
+		];
+		const map = buildActivityMap(mkSource(files), settings(), {
+			today: TODAY,
+		});
+		expect(map.get("2026-04-12")?.count).toBe(3);
+	});
+});

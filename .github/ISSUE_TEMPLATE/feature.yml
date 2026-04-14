@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a new capability or enhancement for Vault Pulse
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the underlying problem first. The strongest feature requests are ones that surface a real workflow gap, not just ask for a specific UI.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's getting in your way? What can't you do today?
+      placeholder: "When my vault spans multiple projects I can't tell which ones dominate my activity at a glance, because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Your first-draft idea. Leave blank if you'd rather the maintainer design the fix.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: How are you living with this today?
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know the feature is done? 2–5 observable behaviors.
+      placeholder: |
+        - [ ] Setting X appears under Community plugins → Vault Pulse
+        - [ ] When set to Y, clicking a cell Z opens ...
+        - [ ] Preference persists across Obsidian restarts
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How badly do you need this?
+      options:
+        - Nice to have — would improve my workflow
+        - Important — I'd switch plugins if this existed
+        - Critical — the plugin is nearly unusable without it
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is a single focused feature, not a wishlist.
+          required: true
+        - label: It's relevant to Vault Pulse specifically (not a request for Obsidian core or a different plugin).
+          required: true
+        - label: I searched existing issues for duplicates.
+          required: true

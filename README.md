@@ -12,10 +12,12 @@ _Three of the built-in palettes, in light and dark themes._ Auto (theme accent) 
 ## Features
 
 - **Sidebar pane** — lives in the right sidebar, collapses like any other panel.
-- **365-day heatmap** — 53 columns × 7 rows, today anchored bottom-right, today's cell always outlined.
+- **Configurable window** — 90 / 180 / 365 day heatmap; today anchored bottom-right, today's cell always outlined.
 - **Quantile-based colors** — buckets adapt to your vault size; no hardcoded thresholds.
 - **Five color palettes** — Auto (theme accent), Green (GitHub-style), **Heat** (orange → red), **Sunset** (gold → indigo), or Custom hex.
+- **Recent-30 sparkline** — compact bar chart above the legend showing the last 30 days, independent of how far you've scrolled the main grid.
 - **Detail panel** — click any day and the panel below lists the files for that day, each clickable, each ⌘-hover previewable.
+- **Folder / tag filters** — exclude noisy folders (e.g. `Archive`) or restrict to files carrying specific tags.
 - **Streak indicator** — selected-day streak shows in the header when you're on a run of consecutive active days.
 - **Jump to today** — command palette entry, plus a "Today →" button in the detail header when you've scrolled away.
 - **Keyboard navigation** — Tab into the grid, then ←/→ = ±week, ↑/↓ = ±day; the detail panel updates as you move.
@@ -66,7 +68,10 @@ Open the heatmap via the **grid** ribbon icon (left sidebar) or the command pale
 | **Activity source** | Combined / Modified / Created | Default: Combined. A file counts for a day if **either** created OR updated matches that day. |
 | **Color palette** | Auto · Green · Heat · Sunset · Custom hex | Auto follows `--interactive-accent`. Named palettes use discrete hex values tuned for both light and dark themes. |
 | **Custom hex color** | `#RRGGBB` | Only visible when palette is "Custom". |
+| **Window length** | 90 / 180 / 365 days | Default: 365. Shorter windows narrow the grid but bring recent activity into sharper view. |
 | **Week starts on** | Sunday / Monday | Default: Sunday (matches GitHub). |
+| **Exclude folders** | Comma-separated path prefixes | e.g. `Archive, _templates`. Prefix matching: `Archive` excludes `Archive/...` but not `My-Archive/...`. Empty = include all. |
+| **Include tags** | Comma-separated tag names (leading `#` optional) | e.g. `project, journal`. If set, files must have AT LEAST ONE of these tags. Empty = include all. Reads both frontmatter `tags:` and inline `#tags`. |
 
 ### Frontmatter dates
 

@@ -1,0 +1,116 @@
+name: Bug report
+description: Something in Vault Pulse isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more of the fields below you fill in, the faster this gets triaged and fixed.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what's wrong.
+      placeholder: "When I click a day in the heatmap, the detail panel shows an empty list even though files exist for that date."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Numbered list of steps, assuming we're starting from a fresh Obsidian session.
+      placeholder: |
+        1. Open Vault Pulse via the ribbon icon
+        2. Click the cell for 2026-04-13
+        3. Observe that the detail panel shows "No activity"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Attach screenshots or a short GIF if visual.
+    validations:
+      required: true
+
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      description: "Settings → About → Version"
+      placeholder: "1.5.11"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Vault Pulse version
+      description: "Settings → Community plugins → Vault Pulse (or check the installed manifest.json)"
+      placeholder: "0.1.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - iOS
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: theme
+    attributes:
+      label: Obsidian theme
+      description: Optional — useful for visual / layout bugs.
+      placeholder: "Default, Minimal, Things, Dracula, etc."
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Plugin settings
+      description: List your non-default Vault Pulse settings.
+      placeholder: |
+        Activity source: Combined
+        Color palette: Heat
+        Week starts on: Sunday
+        Window length: 365
+        Exclude folders: Archive, _templates
+        Include tags: (empty)
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: "Open DevTools (⌘⌥I on macOS, Ctrl+Shift+I elsewhere), switch to the Console tab, copy any red error lines here."
+      render: shell
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Before submitting
+      options:
+        - label: I'm on the latest Vault Pulse release.
+          required: true
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: I disabled my other community plugins and confirmed the bug still reproduces (or I couldn't isolate it, which is fine — say so in Actual behavior).
+          required: true

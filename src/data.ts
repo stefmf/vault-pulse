@@ -30,7 +30,7 @@ export function buildActivityMap(
 	options: BuildOptions = {}
 ): ActivityMap {
 	const today = (options.today ?? DateTime.local()).startOf("day");
-	const gridStart = computeGridStart(today, settings.weekStart);
+	const gridStart = computeGridStart(today, settings.weekStart, settings.windowDays);
 
 	const map: ActivityMap = new Map();
 
@@ -47,8 +47,13 @@ export function buildActivityMap(
 	const gridStartIso = toISODate(gridStart);
 	const todayIso = toISODate(today);
 
+	const excludedFolders = parseCsvList(settings.excludeFolders);
+	const includedTags = parseCsvList(settings.includeTags).map(normalizeTag);
+
 	for (const file of source.getMarkdownFiles()) {
 		const cache = source.getFileCache(file);
+		if (!fileMatchesFilters(file, cache, excludedFolders, includedTags)) continue;
+
 		const { created, updated } = extractDates(file, cache);
 
 		const touched = new Set<string>();
@@ -86,6 +91,73 @@ export function extractDates(
 		created: created.isValid ? created.startOf("day") : null,
 		updated: updated.isValid ? updated.startOf("day") : null,
 	};
+}
+
+/**
+ * Decide whether a file should contribute to the activity map based on
+ * the user's folder-exclude and tag-include filters.
+ *
+ * Folder matching is prefix-based: "Archive" excludes "Archive/x.md" and
+ * "Archive" itself, but NOT "My-Archive/x.md".
+ *
+ * Tag matching is OR: if any required tags are configured, the file must
+ * have at least one of them. Tags are gathered from both frontmatter and
+ * inline `#tags`. Leading `#` is stripped for comparison.
+ */
+export function fileMatchesFilters(
+	file: TFile,
+	cache: CachedMetadata | null,
+	excludedFolders: string[],
+	includedTags: string[]
+): boolean {
+	for (const folder of excludedFolders) {
+		if (file.path === folder || file.path.startsWith(folder + "/")) {
+			return false;
+		}
+	}
+
+	if (includedTags.length === 0) return true;
+
+	const fileTags = extractFileTags(cache);
+	for (const required of includedTags) {
+		if (fileTags.has(required)) return true;
+	}
+	return false;
+}
+
+export function extractFileTags(cache: CachedMetadata | null): Set<string> {
+	const tags = new Set<string>();
+	if (!cache) return tags;
+
+	const fmTags = cache.frontmatter?.tags ?? cache.frontmatter?.tag;
+	if (Array.isArray(fmTags)) {
+		for (const t of fmTags) tags.add(normalizeTag(String(t)));
+	} else if (typeof fmTags === "string") {
+		for (const t of fmTags.split(/[,\s]+/)) {
+			const n = normalizeTag(t);
+			if (n) tags.add(n);
+		}
+	}
+
+	const inlineTags = (cache as unknown as { tags?: Array<{ tag: string }> }).tags;
+	if (Array.isArray(inlineTags)) {
+		for (const entry of inlineTags) {
+			tags.add(normalizeTag(entry.tag));
+		}
+	}
+
+	return tags;
+}
+
+function parseCsvList(s: string): string[] {
+	return s
+		.split(",")
+		.map((x) => x.trim())
+		.filter(Boolean);
+}
+
+function normalizeTag(t: string): string {
+	return t.replace(/^#/, "").toLowerCase();
 }
 
 function parseFrontmatterDate(value: unknown): DateTime | null {
