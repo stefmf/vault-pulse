@@ -1,8 +1,6 @@
 /* Vault Pulse — sidebar heatmap styles */
 
 .vault-pulse-view.view-content {
-	/* Ramp vars live on the view root so grid cells AND legend swatches
-	   share the same custom properties. JS overrides these at render time. */
 	--vp-cell-size: 11px;
 	--vp-cell-gap: 3px;
 	--vp-cell-radius: 2px;
@@ -22,9 +20,6 @@
 	font-family: var(--font-interface);
 }
 
-/*
- * Grid wrapper: horizontally scrollable, auto-height.
- */
 .vault-pulse-grid-wrapper {
 	flex: 0 0 auto;
 	overflow-x: auto;
@@ -35,7 +30,6 @@
 	scrollbar-width: thin;
 	padding: var(--size-4-3) var(--size-4-3) calc(var(--size-4-3) + 6px);
 	border-bottom: 1px solid var(--background-modifier-border);
-	/* No explicit background — inherits the sidebar pane's natural color. */
 }
 
 .vault-pulse-heatmap {
@@ -68,7 +62,6 @@
 	font-weight: var(--font-medium);
 }
 
-/* Body: day labels column + cells grid */
 .vault-pulse-body {
 	display: flex;
 	gap: var(--size-4-1);
@@ -116,10 +109,6 @@
 .vault-pulse-cell[data-level="3"] { background-color: var(--vp-level-3); }
 .vault-pulse-cell[data-level="4"] { background-color: var(--vp-level-4); }
 
-/*
- * Today marker — thin inner border so today's cell is always locatable.
- * Declared BEFORE :hover and .is-selected so those override when active.
- */
 .vault-pulse-cell[data-today="1"] {
 	box-shadow: inset 0 0 0 1px var(--text-normal);
 }
@@ -137,6 +126,39 @@
 		0 0 0 1.5px var(--interactive-accent),
 		0 0 8px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
 	outline: none;
+}
+
+/* Sparkline — last-30-days compact bar chart */
+.vault-pulse-sparkline {
+	display: flex;
+	align-items: flex-end;
+	gap: 2px;
+	height: 36px;
+	padding: var(--size-4-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex: 0 0 auto;
+}
+
+.vault-pulse-sparkline-bar {
+	flex: 1 1 0;
+	min-width: 2px;
+	min-height: 2px;
+	background: var(--background-modifier-border);
+	border-radius: 1.5px 1.5px 0 0;
+	cursor: pointer;
+	transition:
+		background-color 120ms ease,
+		transform 120ms cubic-bezier(0.4, 0, 0.2, 1);
+	transform-origin: bottom;
+}
+
+.vault-pulse-sparkline-bar.is-active {
+	background: var(--interactive-accent);
+}
+
+.vault-pulse-sparkline-bar:hover {
+	transform: scaleY(1.12) scaleX(1.4);
+	background: color-mix(in srgb, var(--interactive-accent) 85%, var(--text-normal));
 }
 
 /* Legend row */
@@ -194,8 +216,6 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 	position: sticky;
 	top: 0;
-	/* Matches the natural sidebar pane background so the sticky header
-	   blends with surrounding panels and covers rows scrolling under it. */
 	background: var(--background-secondary);
 	z-index: 1;
 	box-shadow: 0 2px 8px transparent;
@@ -241,7 +261,6 @@
 	height: 12px;
 }
 
-/* Today button */
 .vault-pulse-detail-today-btn {
 	display: inline-flex;
 	align-items: center;
@@ -290,7 +309,6 @@
 	height: 12px;
 }
 
-/* File list */
 .vault-pulse-detail-list {
 	padding: var(--size-4-1) 0;
 }
@@ -355,7 +373,6 @@
 	text-align: center;
 }
 
-/* Empty state */
 .vault-pulse-empty-state {
 	padding: var(--size-4-6);
 	text-align: center;
@@ -363,9 +380,9 @@
 	font-size: var(--font-ui-small);
 }
 
-/* Motion hygiene */
 @media (prefers-reduced-motion: reduce) {
 	.vault-pulse-cell,
+	.vault-pulse-sparkline-bar,
 	.vault-pulse-detail-row,
 	.vault-pulse-detail-icon,
 	.vault-pulse-detail-header,
@@ -374,7 +391,8 @@
 		transition: none;
 		animation: none;
 	}
-	.vault-pulse-cell:hover {
+	.vault-pulse-cell:hover,
+	.vault-pulse-sparkline-bar:hover {
 		transform: none;
 	}
 	.vault-pulse-detail-today-btn:hover {

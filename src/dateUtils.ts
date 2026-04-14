@@ -31,13 +31,18 @@ export function toISODate(dt: DateTime): string {
 
 /**
  * Start-of-grid date such that today lands in the last column
- * and the first row is the user's week-start day. Always produces
- * a 53-column grid.
+ * and the first row is the user's week-start day.
  *
  * Luxon weekday: 1 (Mon) ... 7 (Sun). weekStart: 0 = Sunday, 1 = Monday.
+ * The window-length parameter controls how many days the grid covers.
+ * Default is WINDOW_DAYS (365) which produces a 53-column grid.
  */
-export function computeGridStart(today: DateTime, weekStart: 0 | 1): DateTime {
-	const windowStart = today.minus({ days: WINDOW_DAYS - 1 }).startOf("day");
+export function computeGridStart(
+	today: DateTime,
+	weekStart: 0 | 1,
+	windowDays: number = WINDOW_DAYS
+): DateTime {
+	const windowStart = today.minus({ days: windowDays - 1 }).startOf("day");
 	const startLuxon = weekStart === 0 ? 7 : 1;
 	const offset = (windowStart.weekday - startLuxon + 7) % 7;
 	return windowStart.minus({ days: offset });

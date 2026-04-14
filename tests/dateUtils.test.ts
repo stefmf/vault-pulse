@@ -45,6 +45,20 @@ describe("computeGridStart", () => {
 			expect(diff).toBeLessThanOrEqual(370);
 		}
 	});
+
+	it("honors a custom windowDays argument", () => {
+		const today = DateTime.fromISO("2026-04-13");
+		for (const window of [90, 180, 365]) {
+			const gridStart = computeGridStart(today, 0, window);
+			const diff = Math.floor(today.diff(gridStart, "days").days);
+			// Grid start may extend up to 6 days earlier than the raw window
+			// to land on a week boundary, so diff ∈ [window-1, window-1+6].
+			expect(diff).toBeGreaterThanOrEqual(window - 1);
+			expect(diff).toBeLessThanOrEqual(window - 1 + 6);
+			// Every gridStart must still be a Sunday for weekStart=0.
+			expect(gridStart.weekday).toBe(7);
+		}
+	});
 });
 
 describe("weekRow", () => {

@@ -3,7 +3,12 @@ import { DateTime } from "luxon";
 import type VaultPulsePlugin from "./main";
 import { HOVER_LINK_SOURCE } from "./main";
 import { buildActivityMap, fromApp } from "./data";
-import { renderEmptyState, renderHeatmap, renderLegend } from "./renderer";
+import {
+	renderEmptyState,
+	renderHeatmap,
+	renderLegend,
+	renderSparkline,
+} from "./renderer";
 import { attachInteractions, InteractionHandle } from "./interactions";
 import {
 	applyRampToContainer,
@@ -20,6 +25,7 @@ export const VIEW_TYPE_VAULT_PULSE = "vault-pulse-view";
 export class VaultPulseView extends ItemView {
 	plugin: VaultPulsePlugin;
 	private gridEl!: HTMLElement;
+	private sparklineEl!: HTMLElement;
 	private legendEl!: HTMLElement;
 	private detailEl!: HTMLElement;
 	private interactions: InteractionHandle | null = null;
@@ -51,6 +57,7 @@ export class VaultPulseView extends ItemView {
 		this.contentEl.empty();
 		this.contentEl.addClass("vault-pulse-view");
 		this.gridEl = this.contentEl.createDiv("vault-pulse-grid-wrapper");
+		this.sparklineEl = this.contentEl.createDiv("vault-pulse-sparkline");
 		this.legendEl = this.contentEl.createDiv("vault-pulse-legend");
 		this.detailEl = this.contentEl.createDiv("vault-pulse-detail");
 
@@ -90,6 +97,7 @@ export class VaultPulseView extends ItemView {
 
 		if (totalFiles === 0) {
 			renderEmptyState(this.gridEl, "No markdown files in this vault yet.");
+			this.sparklineEl.empty();
 			this.legendEl.empty();
 			this.detailEl.empty();
 			return;
@@ -104,6 +112,15 @@ export class VaultPulseView extends ItemView {
 			activityMap: this.activityMap,
 			buckets,
 			settings: this.plugin.settings,
+		});
+
+		renderSparkline({
+			container: this.sparklineEl,
+			activityMap: this.activityMap,
+			onSelect: (iso) => {
+				this.selectedIso = iso;
+				this.renderSelection();
+			},
 		});
 
 		renderLegend(this.legendEl);
