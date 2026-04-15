@@ -126,4 +126,4 @@ This adapts automatically: a light vault with ~1 note/day and a heavy vault with
 
 ## License
 
-[MIT](LICENSE) © 2026 Stephen Monclova
+[MIT](LICENSE) © 2026 Stefmf

@@ -132,7 +132,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Author name updated to **Stephen Monclova** in `manifest.json`, `package.json`, `LICENSE`, and `README.md`.
+- Author name updated to **Stefmf** in `manifest.json`, `package.json`, `LICENSE`, and `README.md`.
 
 ## [0.1.1] - 2026-04-13
 
