@@ -21,7 +21,7 @@
 		"activity",
 		"dashboard"
 	],
-	"author": "Stephen Monclova",
+	"author": "Stefmf",
 	"license": "MIT",
 	"dependencies": {
 		"luxon": "^3.4.4"
