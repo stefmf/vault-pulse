@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-15
+
+### Changed
+
+- Author field across `manifest.json`, `package.json`, `LICENSE`, `README.md`, and `CHANGELOG.md` now uses the GitHub username **Stefmf** instead of the full legal name. Git history was rewritten in the same pass so the full name is no longer present in any historic blob or commit message.
+- `scripts/sync-plugin.mjs` now copies the build artifacts into any known vault plugin folder that exists (personal vault + repo-local `test-vault/`). Skips targets that don't exist; never touches `data.json`.
+
 ## [0.3.1] - 2026-04-15
 
 ### Fixed
