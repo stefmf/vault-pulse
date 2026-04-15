@@ -2,11 +2,12 @@ import { ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import { DateTime } from "luxon";
 import type VaultPulsePlugin from "./main";
 import { HOVER_LINK_SOURCE } from "./main";
-import { buildActivityMap, fromApp } from "./data";
+import { buildActivityMap, buildAllActivity, fromApp } from "./data";
 import {
 	renderEmptyState,
 	renderHeatmap,
 	renderLegend,
+	renderPager,
 	renderSparkline,
 } from "./renderer";
 import { attachInteractions, InteractionHandle } from "./interactions";
@@ -16,15 +17,25 @@ import {
 	computeQuantileBuckets,
 } from "./colorUtils";
 import { renderDetailPanel } from "./detailPanel";
-import { toISODate } from "./dateUtils";
+import { computeGridStart, toISODate } from "./dateUtils";
 import { attachElasticScroll } from "./elasticScroll";
-import type { ActivityMap } from "./types";
+import { burstConfetti } from "./confetti";
+import { computeStreakSymbols, StreakSymbols } from "./streakSymbols";
+import { t } from "./i18n";
+import type { ActivityMap, QuantileBuckets } from "./types";
 
 export const VIEW_TYPE_VAULT_PULSE = "vault-pulse-view";
+
+interface StreakWalk {
+	count: number;
+	isos: string[];
+	startIso: string | null;
+}
 
 export class VaultPulseView extends ItemView {
 	plugin: VaultPulsePlugin;
 	private gridEl!: HTMLElement;
+	private pagerEl!: HTMLElement;
 	private sparklineEl!: HTMLElement;
 	private legendEl!: HTMLElement;
 	private detailEl!: HTMLElement;
@@ -33,7 +44,12 @@ export class VaultPulseView extends ItemView {
 	private detailElasticCleanup: (() => void) | null = null;
 	private scheduleRefresh: () => void;
 	private activityMap: ActivityMap = new Map();
+	private allActivity: Map<string, number> = new Map();
 	private selectedIso: string | null = null;
+	private pagerOffsetDays = 0;
+	private previousTodaySymbols: StreakSymbols | null = null;
+	private previousSelectedStreakCount = 0;
+	private hasRenderedOnce = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: VaultPulsePlugin) {
 		super(leaf);
@@ -46,7 +62,7 @@ export class VaultPulseView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Vault pulse";
+		return t("view.title");
 	}
 
 	getIcon(): string {
@@ -57,6 +73,7 @@ export class VaultPulseView extends ItemView {
 		this.contentEl.empty();
 		this.contentEl.addClass("vault-pulse-view");
 		this.gridEl = this.contentEl.createDiv("vault-pulse-grid-wrapper");
+		this.pagerEl = this.contentEl.createDiv("vault-pulse-pager");
 		this.sparklineEl = this.contentEl.createDiv("vault-pulse-sparkline");
 		this.legendEl = this.contentEl.createDiv("vault-pulse-legend");
 		this.detailEl = this.contentEl.createDiv("vault-pulse-detail");
@@ -93,11 +110,22 @@ export class VaultPulseView extends ItemView {
 
 		this.gridEl.empty();
 
-		this.activityMap = buildActivityMap(fromApp(this.app), this.plugin.settings);
+		const source = fromApp(this.app);
+		this.allActivity = buildAllActivity(source, this.plugin.settings);
+		this.clampPagerOffset();
+
+		const today = DateTime.local().startOf("day");
+		const windowEnd = today.minus({ days: this.pagerOffsetDays });
+
+		this.activityMap = buildActivityMap(source, this.plugin.settings, {
+			today: windowEnd,
+		});
 		const totalFiles = this.app.vault.getMarkdownFiles().length;
 
 		if (totalFiles === 0) {
-			renderEmptyState(this.gridEl, "No markdown files in this vault yet.");
+			renderEmptyState(this.gridEl, t("detail.emptyVault"));
+			this.pagerEl.empty();
+			this.pagerEl.classList.add("is-hidden");
 			this.sparklineEl.empty();
 			this.legendEl.empty();
 			this.detailEl.empty();
@@ -113,17 +141,15 @@ export class VaultPulseView extends ItemView {
 			activityMap: this.activityMap,
 			buckets,
 			settings: this.plugin.settings,
+			today: windowEnd,
 		});
 
-		renderSparkline({
-			container: this.sparklineEl,
-			activityMap: this.activityMap,
-			onSelect: (iso) => {
-				this.selectedIso = iso;
-				this.renderSelection();
-			},
-		});
+		if (!this.selectedIso) {
+			this.selectedIso = toISODate(windowEnd);
+		}
 
+		this.renderPager(windowEnd);
+		this.renderSparklineIfVisible(buckets, windowEnd);
 		renderLegend(this.legendEl);
 
 		this.interactions = attachInteractions({
@@ -134,9 +160,6 @@ export class VaultPulseView extends ItemView {
 			},
 		});
 
-		if (!this.selectedIso) {
-			this.selectedIso = toISODate(DateTime.local().startOf("day"));
-		}
 		this.renderSelection();
 
 		requestAnimationFrame(() => {
@@ -151,10 +174,20 @@ export class VaultPulseView extends ItemView {
 
 	/**
 	 * Called by the "Jump to today" command and the Today button in the
-	 * detail panel header.
+	 * detail panel header. Resets any paged offset and selects today so the
+	 * user returns to the live view in one click.
 	 */
 	scrollToToday(): void {
+		const wasPaged = this.pagerOffsetDays > 0;
+		this.pagerOffsetDays = 0;
 		this.selectedIso = toISODate(DateTime.local().startOf("day"));
+
+		if (wasPaged) {
+			// Grid needs to rebuild around the new window end.
+			this.refresh();
+			return;
+		}
+
 		this.renderSelection();
 		requestAnimationFrame(() => {
 			this.gridEl.scrollLeft = this.gridEl.scrollWidth;
@@ -165,8 +198,94 @@ export class VaultPulseView extends ItemView {
 		});
 	}
 
+	private renderSparklineIfVisible(
+		buckets: QuantileBuckets,
+		windowEnd: DateTime
+	): void {
+		if (!this.plugin.settings.showSparkline) {
+			this.sparklineEl.empty();
+			return;
+		}
+
+		renderSparkline({
+			container: this.sparklineEl,
+			activityMap: this.activityMap,
+			buckets,
+			today: windowEnd,
+			onSelect: (iso) => {
+				this.selectedIso = iso;
+				this.renderSelection();
+			},
+		});
+	}
+
+	private renderPager(windowEnd: DateTime): void {
+		const settings = this.plugin.settings;
+		const gridStart = computeGridStart(
+			windowEnd,
+			settings.weekStart,
+			settings.windowDays
+		);
+		const gridStartIso = toISODate(gridStart);
+		const earliestIso = this.earliestActiveIso();
+
+		const canPrev = earliestIso != null && earliestIso < gridStartIso;
+		const canNext = this.pagerOffsetDays > 0;
+		const visible = canPrev || canNext;
+
+		renderPager({
+			container: this.pagerEl,
+			visible,
+			canPrev,
+			canNext,
+			rangeLabel: formatWindowRange(gridStart, windowEnd),
+			prevLabel: t("detail.pagerPrev"),
+			nextLabel: t("detail.pagerNext"),
+			onPrev: () => this.stepPager(+1),
+			onNext: () => this.stepPager(-1),
+		});
+	}
+
+	private stepPager(direction: 1 | -1): void {
+		const today = DateTime.local().startOf("day");
+		const windowDays = this.plugin.settings.windowDays;
+		const desired = this.pagerOffsetDays + direction * windowDays;
+		this.pagerOffsetDays = this.clampOffset(desired, today);
+
+		const newWindowEnd = today.minus({ days: this.pagerOffsetDays });
+		this.selectedIso = toISODate(newWindowEnd);
+		this.refresh();
+	}
+
+	private clampPagerOffset(): void {
+		const today = DateTime.local().startOf("day");
+		this.pagerOffsetDays = this.clampOffset(this.pagerOffsetDays, today);
+	}
+
+	private clampOffset(offset: number, today: DateTime): number {
+		const earliestIso = this.earliestActiveIso();
+		if (!earliestIso) return 0;
+		// Cap at (today − earliest) so windowEnd = today − offset never slips
+		// below the earliest active day; at the cap, earliest sits at the
+		// grid's right edge and the pager's prev button disables.
+		const earliest = DateTime.fromISO(earliestIso);
+		const maxOffset = Math.max(
+			0,
+			Math.floor(today.diff(earliest, "days").days)
+		);
+		return Math.max(0, Math.min(offset, maxOffset));
+	}
+
+	private earliestActiveIso(): string | null {
+		if (this.allActivity.size === 0) return null;
+		let earliest: string | null = null;
+		for (const iso of this.allActivity.keys()) {
+			if (earliest === null || iso < earliest) earliest = iso;
+		}
+		return earliest;
+	}
+
 	private renderSelection(): void {
-		// Roving tabindex + is-selected class both move to the newly selected cell.
 		const previous = this.gridEl.querySelector<HTMLElement>(
 			".vault-pulse-cell.is-selected"
 		);
@@ -186,16 +305,25 @@ export class VaultPulseView extends ItemView {
 		}
 
 		const todayIso = toISODate(DateTime.local().startOf("day"));
-		const streak = this.selectedIso
-			? computeStreakEndingAt(this.activityMap, this.selectedIso)
-			: 0;
+		const selectedStreak = this.selectedIso
+			? this.computeStreakEndingAt(this.selectedIso)
+			: { count: 0, isos: [], startIso: null };
+
+		void this.maintainLongestStreak(selectedStreak.count);
 
 		renderDetailPanel({
 			container: this.detailEl,
 			iso: this.selectedIso,
-			day: this.selectedIso ? this.activityMap.get(this.selectedIso) : undefined,
-			streak,
+			day: this.selectedIso
+				? this.activityMap.get(this.selectedIso)
+				: undefined,
+			streakCount: selectedStreak.count,
+			streakStartIso: selectedStreak.startIso,
+			longestStreak: this.plugin.settings.longestStreak,
+			recentStats: this.computeRecentStats(),
 			isToday: this.selectedIso === todayIso,
+			showStreakCounter: this.plugin.settings.showStreakCounter,
+			showMiniStats: this.plugin.settings.showMiniStats,
 			onOpen: (file: TFile) => {
 				void this.app.workspace.openLinkText(file.path, "", false);
 			},
@@ -212,6 +340,12 @@ export class VaultPulseView extends ItemView {
 			},
 		});
 
+		this.playStreakTickIfGrew(selectedStreak.count);
+		this.fireTierBurstIfAdvanced();
+
+		this.previousSelectedStreakCount = selectedStreak.count;
+		this.hasRenderedOnce = true;
+
 		if (this.detailElasticCleanup) {
 			this.detailElasticCleanup();
 			this.detailElasticCleanup = null;
@@ -222,6 +356,140 @@ export class VaultPulseView extends ItemView {
 		if (list) {
 			this.detailElasticCleanup = attachElasticScroll(this.detailEl, list, "y");
 		}
+	}
+
+	private playStreakTickIfGrew(currentCount: number): void {
+		if (!this.hasRenderedOnce) return;
+		if (currentCount <= this.previousSelectedStreakCount) return;
+		const text = this.detailEl.querySelector<HTMLElement>(
+			".vault-pulse-streak-text"
+		);
+		if (!text) return;
+		text.classList.remove("is-ticking");
+		// Force reflow so the animation re-triggers when the class re-adds.
+		void text.offsetWidth;
+		text.classList.add("is-ticking");
+		window.setTimeout(() => text.classList.remove("is-ticking"), 400);
+	}
+
+	private fireTierBurstIfAdvanced(): void {
+		const todayStreak = this.computeTodayStreak();
+		const currentSymbols = computeStreakSymbols(todayStreak.count);
+		const previous = this.previousTodaySymbols;
+		this.previousTodaySymbols = currentSymbols;
+
+		if (!this.hasRenderedOnce || !previous) return;
+
+		const flameAdvanced = currentSymbols.flames > previous.flames;
+		const trophyAdvanced = currentSymbols.trophies > previous.trophies;
+		if (!flameAdvanced && !trophyAdvanced) return;
+
+		const streakEl = this.detailEl.querySelector<HTMLElement>(
+			".vault-pulse-detail-streak"
+		);
+		if (!streakEl) return;
+
+		// Trophy advancement earns a grander celebration — more pieces, gold
+		// palette, bigger ripple — because hitting a year is a qualitatively
+		// different milestone than stepping through the flame tiers.
+		const grand = trophyAdvanced;
+		streakEl.dataset.burst = grand ? "grand" : "1";
+		burstConfetti(streakEl, { grand });
+		// Keep the data-burst attribute until the ripple animation fully
+		// completes — durations match the CSS keyframe lengths + a small
+		// buffer so the :before pseudo has time to fade out cleanly.
+		window.setTimeout(
+			() => {
+				delete streakEl.dataset.burst;
+			},
+			grand ? 2220 : 1520
+		);
+	}
+
+	private async maintainLongestStreak(current: number): Promise<void> {
+		const observed = Math.max(current, this.computeLongestStreak());
+		if (observed > this.plugin.settings.longestStreak) {
+			this.plugin.settings.longestStreak = observed;
+			// Write directly rather than saveSettings() — the latter re-renders
+			// all views and we're already mid-render.
+			await this.plugin.saveData(this.plugin.settings);
+		}
+	}
+
+	/**
+	 * Longest consecutive run of active days in the vault — NOT bounded by the
+	 * heatmap window. Sorts the full set of active ISOs and counts consecutive
+	 * spans so a 2-year streak reports honestly even if only the last 365 days
+	 * are rendered on the grid.
+	 */
+	private computeLongestStreak(): number {
+		if (this.allActivity.size === 0) return 0;
+		const sorted = [...this.allActivity.keys()].sort();
+		let best = 1;
+		let run = 1;
+		for (let i = 1; i < sorted.length; i++) {
+			const prev = DateTime.fromISO(sorted[i - 1]);
+			const curr = DateTime.fromISO(sorted[i]);
+			if (curr.diff(prev, "days").days === 1) {
+				run += 1;
+			} else {
+				run = 1;
+			}
+			if (run > best) best = run;
+		}
+		return best;
+	}
+
+	/**
+	 * Week / month / year file counts relative to real today — not the
+	 * selected day. "This week" is the last 7 days inclusive (avoids
+	 * weekStart ambiguity); "this month" and "this year" are calendar-based.
+	 * All three read from the unbounded `allActivity` so the numbers stay
+	 * honest when the window is smaller than 365 days.
+	 */
+	private computeRecentStats(): { week: number; month: number; year: number } {
+		const today = DateTime.local().startOf("day");
+		const weekStart = today.minus({ days: 6 });
+		const monthStart = today.startOf("month");
+		const yearStart = today.startOf("year");
+		let week = 0;
+		let month = 0;
+		let year = 0;
+		for (const [iso, count] of this.allActivity) {
+			const dt = DateTime.fromISO(iso);
+			if (!dt.isValid || dt > today) continue;
+			if (dt >= yearStart) year += count;
+			if (dt >= monthStart) month += count;
+			if (dt >= weekStart) week += count;
+		}
+		return { week, month, year };
+	}
+
+	private computeTodayStreak(): StreakWalk {
+		const todayIso = toISODate(DateTime.local().startOf("day"));
+		return this.computeStreakEndingAt(todayIso);
+	}
+
+	private computeStreakEndingAt(iso: string): StreakWalk {
+		if (!this.allActivity.has(iso)) {
+			return { count: 0, isos: [], startIso: null };
+		}
+
+		const isos: string[] = [iso];
+		let cursor = DateTime.fromISO(iso).minus({ days: 1 });
+		for (;;) {
+			const key = toISODate(cursor);
+			if (!this.allActivity.has(key)) break;
+			isos.push(key);
+			cursor = cursor.minus({ days: 1 });
+		}
+		// Chronological order: oldest → newest.
+		isos.reverse();
+		return {
+			count: isos.length,
+			isos,
+			startIso: isos[0] ?? null,
+		};
 	}
 
 	onClose(): Promise<void> {
@@ -242,21 +510,19 @@ export class VaultPulseView extends ItemView {
 }
 
 /**
- * Count consecutive active days ending at (and including) the given iso date.
- * Returns 0 if the given day has no activity.
+ * Render a window's date range as a compact label: `May 2025 – Apr 2026` for
+ * a year span; `Jan – Apr 2026` when the span fits inside one calendar year;
+ * `Apr 2026` when start and end share the same month. Narrow enough for the
+ * sidebar at any window length.
  */
-function computeStreakEndingAt(activityMap: ActivityMap, iso: string): number {
-	const anchor = activityMap.get(iso);
-	if (!anchor || anchor.count === 0) return 0;
-
-	let streak = 1;
-	let cursor = DateTime.fromISO(iso).minus({ days: 1 });
-	while (true) {
-		const key = toISODate(cursor);
-		const day = activityMap.get(key);
-		if (!day || day.count === 0) break;
-		streak++;
-		cursor = cursor.minus({ days: 1 });
+function formatWindowRange(start: DateTime, end: DateTime): string {
+	const startMonth = start.toFormat("MMM");
+	const endMonth = end.toFormat("MMM");
+	if (startMonth === endMonth && start.year === end.year) {
+		return `${endMonth} ${end.year}`;
 	}
-	return streak;
+	if (start.year === end.year) {
+		return `${startMonth} – ${endMonth} ${end.year}`;
+	}
+	return `${startMonth} ${start.year} – ${endMonth} ${end.year}`;
 }

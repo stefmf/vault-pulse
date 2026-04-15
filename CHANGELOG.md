@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-15
+
+### Added
+
+- **Streak milestones** — lucide flame icons escalate 1 / 2 / 3 at the week / month / hundred-day marks, and a lucide trophy appears once the streak reaches 365 days. Click the trophy to see the year-1 anniversary date.
+- **Honest streak beyond the window** — streak walk runs against an unbounded activity map so a 2-year streak reports as `731-day streak`, even though the heatmap only renders the last 365 days.
+- **Lifetime-best streak** — persistent `· best N` stat in the detail header that survives broken streaks. Flashes gold when the current streak ties or beats the record.
+- **Mini stats row** — `N WEEK · M MONTH · K YEAR` under the streak row. Values use tabular numerals; labels are uppercase micro-text. Relative to real today, not the selected day.
+- **Status bar widget** — lucide flame + streak count (once ≥ 7 days) plus lucide file + today's count, rendered in Obsidian's bottom status bar. Click opens the pane. Kept fresh by plugin-level file-event subscriptions, independent of whether the view is mounted.
+- **Window pager** — `◀ [range] ▶` above the heatmap steps backward through history one window at a time. Page size = current window length. Prev disables when earliest activity is already in view; next disables at offset 0. The existing **Today →** button doubles as "jump home" — resets the offset AND selects today in one click.
+- **Four visibility toggles** under a new *Visibility* heading — `Show sparkline`, `Show streak counter`, `Show mini stats`, `Show status bar widget`. The sparkline row collapses completely when disabled (no border, no padding).
+- **Tier-crossing celebration** — when the streak crosses into a new flame tier, the streak element fires a one-shot radial ripple + CSS confetti burst (18 pieces, accent palette).
+- **Grand year celebration** — crossing into the first-year trophy runs a richer burst: 36 confetti pieces in a gold-heavy palette, extended travel distance, bigger scale-up ripple. The flame-tier bursts stay compact; the year gets its own visual weight.
+- **Streak count-up tick** — short scale-up animation on the streak number when it increases.
+- **Style Settings integration** — exposes `--vp-streak-flame-color` and `--vp-streak-trophy-color` for live tweaking when the Style Settings plugin is installed.
+- **Localization scaffolding** — every user-facing string routes through `src/i18n/` with English shipping today. Community-contributed locales welcome; `Intl.PluralRules` handles singular/plural forms automatically.
+- **Seed script CLI flags** — `--clean`, `--streak=N`, `--pre=N`, `--trophies=N`, `--tier=week|month|hundred|year`, `--per-day=N` or `--per-day=lo-hi`, `--tags=…`, `--in-folder=…`. Exercise any streak state locally without waiting for real calendar time.
+- **`npm run lint:obsidian`** — runs the ObsidianReviewBot eslint rules locally. Short-circuits the 6-hour community-plugin bot feedback loop.
+
+### Changed
+
+- **Detail header translucency** — was an opaque `--background-secondary` seam against theme-translucent sidebars (Catppuccin Frappe, Minimal); now a `color-mix(var(--background-primary), 72%, transparent)` + `backdrop-filter: blur(12px)` surface that tracks whatever the theme is doing behind the pane.
+- **Sparkline uses the full 4-level palette** — each bar's color comes from the same quantile buckets the heatmap uses (`--vp-level-1` through `--vp-level-4`), so activity intensity reads in both the bar height and its hue. Switching palettes retints the sparkline to match.
+- **Cell selection easing** — selection outline now glides on a 260ms `cubic-bezier(0.2, 0.8, 0.2, 1)` instead of snapping.
+
+### Fixed
+
+- **Invisible sparkline baseline** — zero-count bars used `var(--background-modifier-border)`, which blended into the sidebar on dark themes (Catppuccin Frappe). Switched to `color-mix(var(--text-muted), 16%, transparent)` so empty days stay legible on every theme.
+- **Muted accent on sparkline bars** — added a 1px accent-mixed halo so active bars lift off dark backgrounds.
+- **Sparkline slot stayed visible when disabled** — `.vault-pulse-sparkline:empty` now collapses the row completely, removing its padding + bottom border.
+
 ## [0.1.5] - 2026-04-14
 
 ### Fixed
