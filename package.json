@@ -1,6 +1,6 @@
 {
 	"name": "vault-pulse",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "A GitHub-style activity heatmap of your vault's file activity across the last 365 days.",
 	"main": "main.js",
 	"type": "module",

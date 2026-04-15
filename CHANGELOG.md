@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-15
+
+### Fixed
+
+- **Sparkline stayed empty after toggling `Show sparkline` from off → on** while the heatmap structure was unchanged. The in-place update path called `updateSparklineBars` which silently returned because no bars existed yet. Now falls back to a full sparkline render when the bar count is zero.
+
+### Documentation
+
+- `AGENTS.md` updated to reflect the 0.3.0 architecture: plugin as sole vault-event subscriber, fingerprint-gated render path, structure-key gated in-place updates, no-`backdrop-filter` on persistent surfaces.
+
 ## [0.3.0] - 2026-04-15
 
 ### Changed
