@@ -118,73 +118,11 @@ Activity levels use quantile bucketing over the **non-zero days** in the 365-day
 
 This adapts automatically: a light vault with ~1 note/day and a heavy vault with dozens/day both end up with meaningful bucketing. For the Auto and Custom palettes the colors are computed as alpha-blends of your base color, so empty days show through the theme background. For Green, Heat, and Sunset, the four levels are pre-tuned discrete hex values.
 
-## Development
+## Contributing
 
-```bash
-npm install
-npm run dev              # esbuild watch mode
-npm test                 # vitest suite — pure function coverage
-npm run lint:obsidian    # run the ObsidianReviewBot eslint rules locally
-npm run seed             # seeds ./test-vault/ with 50 fake notes across ~90 days
-npm run sync             # copies main.js/manifest.json/styles.css into test-vault plugin folder
-npm run build            # type-check + production bundle
-```
-
-### Test vault
-
-`npm run seed` generates `./test-vault/` with frontmatter-dated notes, creates `.obsidian/plugins/vault-pulse/`, and copies the built files in. Open that folder as a vault in Obsidian to iterate. Re-run `npm run build && npm run sync` after code changes and reload Obsidian (⌘R) to pick them up.
-
-**Targeted seeding** — the seed script accepts CLI flags so you can exercise any streak state without waiting for real calendar time:
-
-```bash
-npm run seed -- --clean                     # wipe .md, keep plugin install
-npm run seed -- --tier=week                 # 7-day streak ending today
-npm run seed -- --tier=month                # 30-day streak
-npm run seed -- --tier=hundred              # 100-day streak
-npm run seed -- --tier=year                 # 365-day streak (first trophy)
-npm run seed -- --trophies=2                # 731-day streak (two trophies)
-npm run seed -- --streak=30 --pre=10        # streak + prior activity with a gap
-npm run seed -- --streak=15 --per-day=1-4   # 1..4 notes per day (quantile variety)
-npm run seed -- --streak=15 --tags=project  # tag-filter testing
-npm run seed -- --streak=15 --in-folder=Archive   # folder-filter testing
-```
-
-### Contributing translations
-
-All user-facing strings live in [`src/i18n/en.json`](src/i18n/en.json). To add a locale:
-
-1. Copy `en.json` to `<lang>.json` (e.g. `de.json`, `fr.json`).
-2. Translate the string values — don't rename keys or change the `{placeholders}`.
-3. Register the new bundle in [`src/i18n/index.ts`](src/i18n/index.ts) (import it and add to `LOCALES`).
-4. Open a PR. Obsidian's `moment.locale()` auto-picks the right bundle for each user.
-
-Plural-sensitive strings use an `Intl.PluralRules`-driven naming convention — see the `files_one` / `files_other` pair in `en.json`. Languages with more than two plural forms can provide `_zero`, `_two`, `_few`, `_many` alongside `_other` and the renderer will pick the right one.
-
-### Project layout
-
-```
-src/
-  main.ts            Plugin lifecycle, registerView, ribbon, commands, hover-link source
-  view.ts            ItemView subclass, refresh orchestration, streak walk, trail + tier burst
-  renderer.ts        Pure DOM build (CSS grid of divs, legend, month labels, sparkline)
-  detailPanel.ts     Detail panel (date header, streak milestones, Today button, file rows, anniversaries menu)
-  data.ts            Vault scan → Map<isoDate, TFile[]>
-  dateUtils.ts       Luxon date math (grid start, week/col indices, month labels)
-  colorUtils.ts      Quantile buckets + palette dispatch (discrete + alpha-blend)
-  streakSymbols.ts   Pure ladder logic (flames + trophies → display string)
-  interactions.ts    Hover tooltip, click selection, arrow-key navigation
-  elasticScroll.ts   Apple-style mass-spring-damper scroll bounce
-  confetti.ts        CSS-driven particle burst for tier crossings
-  i18n/              Localization bundles + t() helper
-  settings.ts        Settings interface, defaults, PluginSettingTab
-  types.ts           Shared interfaces
-tests/               vitest suites for the pure modules
-scripts/
-  seed-vault.mjs     Seeds test-vault/ with 50 notes + installs built plugin
-  sync-plugin.mjs    Copies built plugin files into test-vault (for iteration)
-```
-
-See [`AGENTS.md`](AGENTS.md) for contributor conventions.
+- **Local development, test vault setup, seeding flags, lint/test/build commands** — see [`tests/README.md`](tests/README.md).
+- **Module responsibilities, file-level conventions** — see [`AGENTS.md`](AGENTS.md).
+- **Translations** — copy [`src/i18n/en.json`](src/i18n/en.json) to `<lang>.json`, translate values (don't rename keys or change `{placeholder}` tokens), register in [`src/i18n/index.ts`](src/i18n/index.ts), open a PR. Obsidian's `moment.locale()` auto-picks the right bundle.
 
 ## License
 

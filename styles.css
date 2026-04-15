@@ -122,7 +122,11 @@ settings:
 	grid-template-columns: repeat(var(--vp-total-cols), var(--vp-cell-size));
 	grid-auto-flow: column;
 	gap: var(--vp-cell-gap);
-	contain: layout;
+	/* `paint` adds to `layout`: tells the compositor that paints inside the
+	   grid stay inside the grid's box, so cell repaints (hover scale, today
+	   marker, in-place data updates) can't bleed into adjacent Obsidian
+	   surfaces. Defensive guarantee on top of the backdrop-filter removal. */
+	contain: layout paint;
 }
 
 .vault-pulse-cell {
@@ -383,14 +387,12 @@ settings:
 	border-bottom: 1px solid var(--background-modifier-border);
 	position: sticky;
 	top: 0;
-	/* Semi-transparent theme-primary background. Previously used
-	   `backdrop-filter: blur(12px) saturate(1.15)` to match translucent-sidebar
-	   themes (Catppuccin Frappe, Minimal), but backdrop-filter promoted the
-	   entire pane into a persistent compositor layer that caused visible
-	   ghosting in adjacent Obsidian surfaces (notably the left-sidebar file
-	   explorer) on large vaults. 92% opacity reads as "sits on top of the
-	   theme" without the GPU cost. */
-	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	/* Solid theme-primary. The file-list scrolls *under* the sticky header,
+	   so any transparency lets ghost-text bleed through. Fully opaque is the
+	   visually clean choice and the only one that's also free of compositor
+	   cost (vs the original `backdrop-filter: blur(12px)` which promoted the
+	   whole pane into a persistent GPU layer). */
+	background: var(--background-primary);
 	z-index: 1;
 	box-shadow: 0 2px 8px transparent;
 	transition: box-shadow 150ms ease;

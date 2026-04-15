@@ -1,14 +1,17 @@
-import { ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { DateTime } from "luxon";
 import type VaultPulsePlugin from "./main";
 import { HOVER_LINK_SOURCE } from "./main";
-import { buildVaultActivity, fromApp } from "./data";
+import { buildVaultActivity, fingerprintActivity, fromApp } from "./data";
+import type { VaultActivity } from "./data";
 import {
 	renderEmptyState,
 	renderHeatmap,
 	renderLegend,
 	renderPager,
 	renderSparkline,
+	updateHeatmapCells,
+	updateSparklineBars,
 } from "./renderer";
 import { attachInteractions, InteractionHandle } from "./interactions";
 import {
@@ -42,7 +45,6 @@ export class VaultPulseView extends ItemView {
 	private interactions: InteractionHandle | null = null;
 	private gridElasticCleanup: (() => void) | null = null;
 	private detailElasticCleanup: (() => void) | null = null;
-	private scheduleRefresh: () => void;
 	private activityMap: ActivityMap = new Map();
 	private allActivity: Map<string, number> = new Map();
 	private selectedIso: string | null = null;
@@ -50,15 +52,13 @@ export class VaultPulseView extends ItemView {
 	private previousTodaySymbols: StreakSymbols | null = null;
 	private previousSelectedStreakCount = 0;
 	private hasRenderedOnce = false;
+	private lastRenderKey: string | null = null;
+	private lastStructureKey: string | null = null;
+	private pendingRender = false;
 
 	constructor(leaf: WorkspaceLeaf, plugin: VaultPulsePlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		// Trailing-edge debounce: a burst of file events (e.g. Obsidian Git
-		// committing 50 files) collapses into one refresh 200ms after the
-		// burst settles, instead of firing at the leading edge + trailing edge
-		// and double-scanning the vault.
-		this.scheduleRefresh = debounce(() => this.refresh(), 200);
 	}
 
 	getViewType(): string {
@@ -82,15 +82,19 @@ export class VaultPulseView extends ItemView {
 		this.legendEl = this.contentEl.createDiv("vault-pulse-legend");
 		this.detailEl = this.contentEl.createDiv("vault-pulse-detail");
 
+		// css-change is the only event the view subscribes to directly. Theme
+		// swaps don't change the data — they change the CSS color ramp — so
+		// we just re-apply the ramp; CSS variables propagate without any DOM
+		// rebuild. Vault / metadata events all flow through the plugin via
+		// `onDataChanged()`.
 		this.registerEvent(
-			this.app.metadataCache.on("changed", () => this.scheduleRefresh())
-		);
-		this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
-		this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
-		this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
-		this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
-		this.registerEvent(
-			this.app.workspace.on("css-change", () => this.scheduleRefresh())
+			this.app.workspace.on("css-change", () => {
+				if (!this.containerEl.isShown()) return;
+				applyRampToContainer(
+					this.contentEl,
+					computeColorRamp(this.plugin.settings)
+				);
+			})
 		);
 
 		this.registerDomEvent(this.detailEl, "scroll", () => {
@@ -100,11 +104,203 @@ export class VaultPulseView extends ItemView {
 			);
 		});
 
+		// Bootstrap with the plugin's already-cached scan (or a fresh one if
+		// the plugin hasn't scanned yet — getLatestScan handles both).
 		this.refresh();
 		return Promise.resolve();
 	}
 
+	/**
+	 * Re-render with a scan tailored to current view state. Called by
+	 * `scrollToToday`, `stepPager`, `onOpen` — whenever the view itself needs
+	 * fresh data outside the plugin's event-driven flow. Vault file events
+	 * arrive via {@link onDataChanged} instead, with a scan already in hand.
+	 */
 	refresh(): void {
+		this.onDataChanged(this.runViewScan());
+	}
+
+	/**
+	 * Primary data-input. Plugin calls this after each scan; the view calls
+	 * it itself via `refresh()` when its own state (pager, settings) changed.
+	 *
+	 * Pipeline:
+	 *   1. Replace `allActivity` + `activityMap` with the (possibly re-anchored)
+	 *      scan output.
+	 *   2. Clamp pager offset against the new earliest-active day.
+	 *   3. Compute a render fingerprint that captures *everything affecting
+	 *      what we'd draw* — data, selection, pager, visibility toggles,
+	 *      current calendar day. If unchanged, skip rendering entirely.
+	 *   4. If pane is hidden, mark a pending render and return; the plugin's
+	 *      `layout-change` hook flushes it when the pane reappears.
+	 *   5. Otherwise, render.
+	 */
+	onDataChanged(pluginScan: VaultActivity): void {
+		const activeScan = this.scanForCurrentState(pluginScan);
+		this.allActivity = activeScan.allActivity;
+		this.activityMap = activeScan.windowed;
+		this.clampPagerOffset();
+
+		const key = this.computeRenderKey();
+		if (key === this.lastRenderKey) return;
+
+		if (!this.containerEl.isShown()) {
+			this.pendingRender = true;
+			return;
+		}
+
+		this.doRender();
+		this.lastRenderKey = key;
+		this.pendingRender = false;
+	}
+
+	/**
+	 * Called by the plugin on `workspace.layout-change`. If the pane just
+	 * became visible and we deferred a render while it was hidden, render now.
+	 */
+	flushIfPending(): void {
+		if (!this.pendingRender || !this.containerEl.isShown()) return;
+		this.doRender();
+		this.lastRenderKey = this.computeRenderKey();
+		this.pendingRender = false;
+	}
+
+	private scanForCurrentState(pluginScan: VaultActivity): VaultActivity {
+		// Plugin's scan is anchored at real today. When the view is paged
+		// backward, we need a scan with an earlier anchor for the windowed
+		// map. `allActivity` is anchor-independent so the paged scan picks up
+		// the same set as the plugin's scan.
+		if (this.pagerOffsetDays === 0) return pluginScan;
+		return this.runViewScan();
+	}
+
+	private runViewScan(): VaultActivity {
+		const today = DateTime.local().startOf("day");
+		if (this.pagerOffsetDays === 0) {
+			return this.plugin.getLatestScan();
+		}
+		const anchor = today.minus({ days: this.pagerOffsetDays });
+		return buildVaultActivity(fromApp(this.app), this.plugin.settings, {
+			filters: this.plugin.getFilters(),
+			today,
+			anchor,
+		});
+	}
+
+	/**
+	 * Stable key composed of every input that affects what we'd draw. Cached
+	 * across refreshes; if the next computed key matches the cached one,
+	 * `onDataChanged` skips the entire render path. This is the single biggest
+	 * win — most file events end up here as no-ops because Obsidian's internal
+	 * cache churn doesn't change any visible count.
+	 */
+	private computeRenderKey(): string {
+		const todayIso = toISODate(DateTime.local().startOf("day"));
+		const settings = this.plugin.settings;
+		const visBits = `${settings.showSparkline ? 1 : 0}${
+			settings.showStreakCounter ? 1 : 0
+		}${settings.showMiniStats ? 1 : 0}`;
+		return [
+			fingerprintActivity(this.activityMap, this.allActivity),
+			`d:${todayIso}`,
+			`sel:${this.selectedIso ?? ""}`,
+			`p:${this.pagerOffsetDays}`,
+			`v:${visBits}`,
+		].join("||");
+	}
+
+	private doRender(): void {
+		const today = DateTime.local().startOf("day");
+		const windowEnd = today.minus({ days: this.pagerOffsetDays });
+		const totalFiles = this.app.vault.getMarkdownFiles().length;
+
+		if (totalFiles === 0) {
+			this.fullClearGrid();
+			renderEmptyState(this.gridEl, t("detail.emptyVault"));
+			this.pagerEl.empty();
+			this.pagerEl.classList.add("is-hidden");
+			this.sparklineEl.empty();
+			this.legendEl.empty();
+			this.detailEl.empty();
+			this.lastStructureKey = null;
+			return;
+		}
+
+		const buckets = computeQuantileBuckets(this.activityMap);
+		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
+
+		const structureKey = this.computeStructureKey(windowEnd);
+		const canUpdateInPlace =
+			structureKey === this.lastStructureKey &&
+			this.gridEl.querySelector(".vault-pulse-heatmap") !== null;
+
+		if (canUpdateInPlace) {
+			// Same dates as last render → just refresh attributes on existing
+			// cells. Saves the cost of tearing down + rebuilding 365+ DOM
+			// nodes when only counts changed.
+			updateHeatmapCells(this.gridEl, this.activityMap, buckets);
+			if (this.plugin.settings.showSparkline) {
+				updateSparklineBars(
+					this.sparklineEl,
+					this.activityMap,
+					buckets,
+					windowEnd
+				);
+			} else {
+				this.sparklineEl.empty();
+			}
+		} else {
+			// Structural change (pager move, day rollover, window resize,
+			// settings flip) — full rebuild.
+			this.fullClearGrid();
+			renderHeatmap({
+				container: this.gridEl,
+				activityMap: this.activityMap,
+				buckets,
+				settings: this.plugin.settings,
+				today: windowEnd,
+			});
+			this.renderSparklineIfVisible(buckets, windowEnd);
+			this.lastStructureKey = structureKey;
+
+			this.interactions = attachInteractions({
+				container: this.gridEl,
+				onCellSelect: (iso) => {
+					this.selectedIso = iso;
+					this.renderSelection();
+					// Selection change re-renders the detail panel only; bump
+					// the render key so the next data-driven refresh doesn't
+					// think we're still on the previous selection.
+					this.lastRenderKey = this.computeRenderKey();
+				},
+			});
+
+			const heatmap = this.gridEl.querySelector<HTMLElement>(
+				".vault-pulse-heatmap"
+			);
+			if (heatmap) {
+				this.gridElasticCleanup = attachElasticScroll(
+					this.gridEl,
+					heatmap,
+					"x"
+				);
+			}
+
+			requestAnimationFrame(() => {
+				this.gridEl.scrollLeft = this.gridEl.scrollWidth;
+			});
+		}
+
+		if (!this.selectedIso) {
+			this.selectedIso = toISODate(windowEnd);
+		}
+
+		this.renderPager(windowEnd);
+		renderLegend(this.legendEl);
+		this.renderSelection();
+	}
+
+	private fullClearGrid(): void {
 		if (this.interactions) {
 			this.interactions.teardown();
 			this.interactions = null;
@@ -113,91 +309,21 @@ export class VaultPulseView extends ItemView {
 			this.gridElasticCleanup();
 			this.gridElasticCleanup = null;
 		}
-
 		this.gridEl.empty();
+	}
 
-		const today = DateTime.local().startOf("day");
-		const source = fromApp(this.app);
-
-		// Clamp the pager offset to a reasonable range BEFORE we scan — but
-		// the clamp depends on `earliestActiveIso()`, which needs `allActivity`.
-		// Do a cheap pre-scan sized to just allActivity so the pager clamp is
-		// accurate, then the real scan below produces the final paged window.
-		// In the common (unpaged) case the pre-scan result IS the final result
-		// and we only pay once.
-		let scan = buildVaultActivity(source, this.plugin.settings);
-		this.allActivity = scan.allActivity;
-		this.clampPagerOffset();
-
-		const windowEnd = today.minus({ days: this.pagerOffsetDays });
-
-		if (this.pagerOffsetDays > 0) {
-			// Paged view — rebuild the windowed map anchored at the earlier
-			// date. `allActivity` from the first scan is still correct
-			// (unbounded at real today).
-			scan = buildVaultActivity(source, this.plugin.settings, {
-				today,
-				anchor: windowEnd,
-			});
-		}
-
-		this.activityMap = scan.windowed;
-
-		const todayIsoForCache = toISODate(today);
-		this.plugin.publishScanCache(
-			this.allActivity,
-			this.allActivity.get(todayIsoForCache) ?? 0
-		);
-		const totalFiles = this.app.vault.getMarkdownFiles().length;
-
-		if (totalFiles === 0) {
-			renderEmptyState(this.gridEl, t("detail.emptyVault"));
-			this.pagerEl.empty();
-			this.pagerEl.classList.add("is-hidden");
-			this.sparklineEl.empty();
-			this.legendEl.empty();
-			this.detailEl.empty();
-			return;
-		}
-
-		const buckets = computeQuantileBuckets(this.activityMap);
-
-		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
-
-		renderHeatmap({
-			container: this.gridEl,
-			activityMap: this.activityMap,
-			buckets,
-			settings: this.plugin.settings,
-			today: windowEnd,
-		});
-
-		if (!this.selectedIso) {
-			this.selectedIso = toISODate(windowEnd);
-		}
-
-		this.renderPager(windowEnd);
-		this.renderSparklineIfVisible(buckets, windowEnd);
-		renderLegend(this.legendEl);
-
-		this.interactions = attachInteractions({
-			container: this.gridEl,
-			onCellSelect: (iso) => {
-				this.selectedIso = iso;
-				this.renderSelection();
-			},
-		});
-
-		this.renderSelection();
-
-		requestAnimationFrame(() => {
-			this.gridEl.scrollLeft = this.gridEl.scrollWidth;
-		});
-
-		const heatmap = this.gridEl.querySelector<HTMLElement>(".vault-pulse-heatmap");
-		if (heatmap) {
-			this.gridElasticCleanup = attachElasticScroll(this.gridEl, heatmap, "x");
-		}
+	/**
+	 * Stable key over the inputs that would change which dates appear in the
+	 * grid. When unchanged, `doRender` updates cell attributes in place.
+	 * `e:` (windowEnd) covers both pager moves AND midnight day-rolls.
+	 */
+	private computeStructureKey(windowEnd: DateTime): string {
+		const settings = this.plugin.settings;
+		return [
+			`w:${settings.windowDays}`,
+			`s:${settings.weekStart}`,
+			`e:${toISODate(windowEnd)}`,
+		].join("|");
 	}
 
 	/**
@@ -217,6 +343,7 @@ export class VaultPulseView extends ItemView {
 		}
 
 		this.renderSelection();
+		this.lastRenderKey = this.computeRenderKey();
 		requestAnimationFrame(() => {
 			this.gridEl.scrollLeft = this.gridEl.scrollWidth;
 			const cell = this.gridEl.querySelector<HTMLElement>(
@@ -243,6 +370,7 @@ export class VaultPulseView extends ItemView {
 			onSelect: (iso) => {
 				this.selectedIso = iso;
 				this.renderSelection();
+				this.lastRenderKey = this.computeRenderKey();
 			},
 		});
 	}

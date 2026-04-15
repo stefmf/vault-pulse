@@ -20,6 +20,12 @@ export function fromApp(app: App): DataSource {
 	};
 }
 
+export interface ParsedFilters {
+	excludedFolders: string[];
+	/** Already lowercased + leading-`#` stripped. */
+	includedTags: string[];
+}
+
 export interface BuildOptions {
 	/**
 	 * Real "today" — the upper bound for dates that land in `allActivity`.
@@ -32,6 +38,20 @@ export interface BuildOptions {
 	 * without affecting `allActivity`'s upper bound.
 	 */
 	anchor?: DateTime;
+	/**
+	 * Pre-parsed filter lists. Cache on the plugin and pass through to skip
+	 * `parseCsvList` on every scan — filters change rarely, scans are
+	 * frequent. When omitted, the parser runs inside this function as before.
+	 */
+	filters?: ParsedFilters;
+}
+
+/** Normalize raw CSV settings into the form `buildVaultActivity` consumes. */
+export function parseFilters(settings: VaultPulseSettings): ParsedFilters {
+	return {
+		excludedFolders: parseCsvList(settings.excludeFolders),
+		includedTags: parseCsvList(settings.includeTags).map(normalizeTag),
+	};
 }
 
 export interface VaultActivity {
@@ -79,8 +99,9 @@ export function buildVaultActivity(
 
 	const allActivity = new Map<string, number>();
 
-	const excludedFolders = parseCsvList(settings.excludeFolders);
-	const includedTags = parseCsvList(settings.includeTags).map(normalizeTag);
+	const filters = options.filters ?? parseFilters(settings);
+	const excludedFolders = filters.excludedFolders;
+	const includedTags = filters.includedTags;
 
 	for (const file of source.getMarkdownFiles()) {
 		const cache = source.getFileCache(file);
@@ -114,6 +135,31 @@ export function buildVaultActivity(
 	}
 
 	return { windowed, allActivity };
+}
+
+/**
+ * Lightweight content fingerprint of a vault scan. Cheap to compute (one
+ * pass over the windowed map + one pass over `allActivity.values()`) and
+ * cheap to compare (string equality). Used by the view to short-circuit
+ * the entire render path when an event fires but nothing the heatmap shows
+ * has actually changed — e.g. Obsidian-internal cache churn from frontmatter
+ * reads that don't bump `created` / `updated`.
+ *
+ * Two different scans produce identical fingerprints only when they would
+ * render identically: every windowed day's count matches AND `allActivity`
+ * has the same total + same number of distinct days. Beyond-window changes
+ * surface in the size + sum.
+ */
+export function fingerprintActivity(
+	windowed: ActivityMap,
+	allActivity: Map<string, number>
+): string {
+	const parts: string[] = [`a:${allActivity.size}`];
+	let allSum = 0;
+	for (const n of allActivity.values()) allSum += n;
+	parts.push(`s:${allSum}`);
+	for (const [iso, day] of windowed) parts.push(`${iso}=${day.count}`);
+	return parts.join("|");
 }
 
 /**

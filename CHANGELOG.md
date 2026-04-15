@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-15
+
+### Changed
+
+- **Render-fingerprint short-circuit** — every refresh now starts with a content fingerprint (`fingerprintActivity` over the windowed map + `allActivity` size/sum, plus current selection / pager / visibility-toggle state). When the new key matches the last-rendered key, `onDataChanged` returns immediately. Most file events end up here as no-ops because Obsidian's internal cache churn doesn't change any visible count.
+- **In-place heatmap + sparkline updates** — when only data changed (no pager move, no day rollover, no window resize), the heatmap is updated by walking existing cells and refreshing `data-count` / `data-level` / `data-today` / `aria-label` attributes in place. Sparkline bars get the same treatment for height + level. Saves 365+ DOM allocations + layout + paint per data-actually-changed refresh. Full rebuild only on structural change.
+- **Plugin is the sole vault-event subscriber.** Previously plugin AND view both subscribed to the same five vault events; each fired its own debounced refresh. Now the plugin owns the subscriptions, runs the scan once, and pushes the result to every mounted view via `view.onDataChanged(scan)`. View loses its `metadataCache.changed` / `vault.create` / `modify` / `delete` / `rename` registrations entirely.
+- **Pre-parsed filter cache.** Plugin caches the result of `parseCsvList(excludeFolders)` + `parseCsvList(includeTags).map(normalizeTag)` and invalidates it in `saveSettings`. Previously parsed on every scan.
+- **Hidden-pane gating** — when the Vault Pulse leaf is collapsed or in a background tab, `onDataChanged` updates the data model but skips DOM rendering. A `pendingRender` flag is flushed when the pane reappears via `workspace.layout-change`.
+- **Theme swaps re-apply the color ramp only.** `workspace.on("css-change")` previously triggered a full refresh; now it just calls `applyRampToContainer`, letting the cells pick up new colors via CSS variables without any DOM rebuild.
+- **`contain: paint` on the heatmap grid** — already had `contain: layout`; the additional `paint` containment tells the compositor that cell repaints stay inside the grid's box. Defensive guarantee on top of the 0.2.2 backdrop-filter removal.
+- **Detail header is now fully opaque** (`var(--background-primary)`). The previous 92%-transparent surface still showed file-list content scrolling underneath through the header. Solid background reads cleaner and costs nothing at the GPU.
+
+### Documentation
+
+- **`tests/README.md` (new)** — local development setup, test-vault layout, full seed-script CLI reference, pre-push checklist, locale-contribution guide. The main `README.md` keeps user-facing content (Features, Install, Usage, Settings, Streaks, License) and points contributors at `tests/README.md` + `AGENTS.md`.
+
+### Fixed
+
+- **App-wide sluggishness on large vaults under heavy file-event load** — the combined effect of the changes above. With the fingerprint short-circuit, in-place updates, and the sole-subscriber architecture, plugin scripting time per event drops to a fraction of 0.2.2 levels. Sidebar scrolling stays at ~60fps even during Obsidian Git commits / dataview re-saves / vault sync.
+
 ## [0.2.2] - 2026-04-15
 
 ### Fixed
