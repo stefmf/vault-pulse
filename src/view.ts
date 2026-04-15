@@ -2,7 +2,7 @@ import { ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import { DateTime } from "luxon";
 import type VaultPulsePlugin from "./main";
 import { HOVER_LINK_SOURCE } from "./main";
-import { buildActivityMap, buildAllActivity, fromApp } from "./data";
+import { buildVaultActivity, fromApp } from "./data";
 import {
 	renderEmptyState,
 	renderHeatmap,
@@ -54,7 +54,11 @@ export class VaultPulseView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, plugin: VaultPulsePlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.scheduleRefresh = debounce(() => this.refresh(), 200, true);
+		// Trailing-edge debounce: a burst of file events (e.g. Obsidian Git
+		// committing 50 files) collapses into one refresh 200ms after the
+		// burst settles, instead of firing at the leading edge + trailing edge
+		// and double-scanning the vault.
+		this.scheduleRefresh = debounce(() => this.refresh(), 200);
 	}
 
 	getViewType(): string {
@@ -85,7 +89,9 @@ export class VaultPulseView extends ItemView {
 		this.registerEvent(this.app.vault.on("modify", () => this.scheduleRefresh()));
 		this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
 		this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
-		this.registerEvent(this.app.workspace.on("css-change", () => this.refresh()));
+		this.registerEvent(
+			this.app.workspace.on("css-change", () => this.scheduleRefresh())
+		);
 
 		this.registerDomEvent(this.detailEl, "scroll", () => {
 			this.detailEl.classList.toggle(
@@ -110,16 +116,38 @@ export class VaultPulseView extends ItemView {
 
 		this.gridEl.empty();
 
+		const today = DateTime.local().startOf("day");
 		const source = fromApp(this.app);
-		this.allActivity = buildAllActivity(source, this.plugin.settings);
+
+		// Clamp the pager offset to a reasonable range BEFORE we scan — but
+		// the clamp depends on `earliestActiveIso()`, which needs `allActivity`.
+		// Do a cheap pre-scan sized to just allActivity so the pager clamp is
+		// accurate, then the real scan below produces the final paged window.
+		// In the common (unpaged) case the pre-scan result IS the final result
+		// and we only pay once.
+		let scan = buildVaultActivity(source, this.plugin.settings);
+		this.allActivity = scan.allActivity;
 		this.clampPagerOffset();
 
-		const today = DateTime.local().startOf("day");
 		const windowEnd = today.minus({ days: this.pagerOffsetDays });
 
-		this.activityMap = buildActivityMap(source, this.plugin.settings, {
-			today: windowEnd,
-		});
+		if (this.pagerOffsetDays > 0) {
+			// Paged view — rebuild the windowed map anchored at the earlier
+			// date. `allActivity` from the first scan is still correct
+			// (unbounded at real today).
+			scan = buildVaultActivity(source, this.plugin.settings, {
+				today,
+				anchor: windowEnd,
+			});
+		}
+
+		this.activityMap = scan.windowed;
+
+		const todayIsoForCache = toISODate(today);
+		this.plugin.publishScanCache(
+			this.allActivity,
+			this.allActivity.get(todayIsoForCache) ?? 0
+		);
 		const totalFiles = this.app.vault.getMarkdownFiles().length;
 
 		if (totalFiles === 0) {

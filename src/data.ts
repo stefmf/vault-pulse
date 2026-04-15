@@ -21,89 +21,66 @@ export function fromApp(app: App): DataSource {
 }
 
 export interface BuildOptions {
+	/**
+	 * Real "today" — the upper bound for dates that land in `allActivity`.
+	 * Defaults to `DateTime.local()`. Tests pin this for determinism.
+	 */
 	today?: DateTime;
+	/**
+	 * Right-edge of the heatmap window. Defaults to `today`. When the user
+	 * pages backward, callers pass an earlier date here to shift the grid
+	 * without affecting `allActivity`'s upper bound.
+	 */
+	anchor?: DateTime;
 }
 
-export function buildActivityMap(
+export interface VaultActivity {
+	/** Windowed by the heatmap window; each entry has `files[]` + `count`. */
+	windowed: ActivityMap;
+	/** Unbounded per-day counts across the whole vault, for streak walks + stats. */
+	allActivity: Map<string, number>;
+}
+
+/**
+ * Walk the vault once and produce BOTH the windowed activity map (for
+ * heatmap rendering) and the unbounded per-day count map (for streak walks
+ * + mini-stats totals). Previously `buildActivityMap` and `buildAllActivity`
+ * each did their own full pass, doubling the work on every file event.
+ *
+ * Filter semantics are identical to the prior single-purpose functions
+ * (excludeFolders + includeTags + activitySource).
+ *
+ * `today` and `anchor` can differ when the user pages the heatmap backward:
+ * `today` still caps `allActivity` at the real calendar day, while `anchor`
+ * sets the grid's right edge.
+ */
+export function buildVaultActivity(
 	source: DataSource,
 	settings: VaultPulseSettings,
 	options: BuildOptions = {}
-): ActivityMap {
+): VaultActivity {
 	const today = (options.today ?? DateTime.local()).startOf("day");
-	const gridStart = computeGridStart(today, settings.weekStart, settings.windowDays);
+	const anchor = (options.anchor ?? today).startOf("day");
+	const gridStart = computeGridStart(anchor, settings.weekStart, settings.windowDays);
+	const gridStartIso = toISODate(gridStart);
+	const anchorIso = toISODate(anchor);
+	const todayIso = toISODate(today);
 
-	const map: ActivityMap = new Map();
-
+	const windowed: ActivityMap = new Map();
 	for (
 		let cursor = gridStart;
-		cursor <= today;
+		cursor <= anchor;
 		cursor = cursor.plus({ days: 1 })
 	) {
 		const iso = toISODate(cursor);
 		const day: ActivityDay = { isoDate: iso, files: [], count: 0 };
-		map.set(iso, day);
+		windowed.set(iso, day);
 	}
 
-	const gridStartIso = toISODate(gridStart);
-	const todayIso = toISODate(today);
+	const allActivity = new Map<string, number>();
 
 	const excludedFolders = parseCsvList(settings.excludeFolders);
 	const includedTags = parseCsvList(settings.includeTags).map(normalizeTag);
-
-	for (const file of source.getMarkdownFiles()) {
-		const cache = source.getFileCache(file);
-		if (!fileMatchesFilters(file, cache, excludedFolders, includedTags)) continue;
-
-		const { created, updated } = extractDates(file, cache);
-
-		const touched = new Set<string>();
-		if (settings.activitySource !== "modified" && created) {
-			touched.add(toISODate(created));
-		}
-		if (settings.activitySource !== "created" && updated) {
-			touched.add(toISODate(updated));
-		}
-
-		for (const iso of touched) {
-			if (iso < gridStartIso || iso > todayIso) continue;
-			const day = map.get(iso);
-			if (day) {
-				day.files.push(file);
-				day.count++;
-			}
-		}
-	}
-
-	return map;
-}
-
-/**
- * Per-day file counts across the WHOLE vault (not just within the configured
- * window). Returns `Map<isoDate, count>`.
- *
- * Why it exists: `buildActivityMap` scopes its output to the heatmap window
- * (max 365 days) for rendering, but the streak walk AND the detail panel's
- * mini-stats line need to see activity past that boundary — otherwise a
- * 2-year streak would display as "367-day streak" and "this year" totals
- * would cap at the window.
- *
- * Streak walkers can still treat this as a set via `.has(iso)`.
- * Same filter semantics as `buildActivityMap` (excludeFolders, includeTags,
- * activitySource). Dedupes when a file's created+updated fall on the same
- * day so the count matches `buildActivityMap`'s `day.count`.
- */
-export function buildAllActivity(
-	source: DataSource,
-	settings: VaultPulseSettings,
-	options: BuildOptions = {}
-): Map<string, number> {
-	const today = (options.today ?? DateTime.local()).startOf("day");
-	const todayIso = toISODate(today);
-
-	const excludedFolders = parseCsvList(settings.excludeFolders);
-	const includedTags = parseCsvList(settings.includeTags).map(normalizeTag);
-
-	const counts = new Map<string, number>();
 
 	for (const file of source.getMarkdownFiles()) {
 		const cache = source.getFileCache(file);
@@ -121,11 +98,52 @@ export function buildAllActivity(
 
 		for (const iso of touched) {
 			if (iso > todayIso) continue;
-			counts.set(iso, (counts.get(iso) ?? 0) + 1);
+
+			// Unbounded counts — streak walk + stats need days older than
+			// the visible window.
+			allActivity.set(iso, (allActivity.get(iso) ?? 0) + 1);
+
+			// Windowed view — heatmap + sparkline render only these.
+			if (iso < gridStartIso || iso > anchorIso) continue;
+			const day = windowed.get(iso);
+			if (day) {
+				day.files.push(file);
+				day.count++;
+			}
 		}
 	}
 
-	return counts;
+	return { windowed, allActivity };
+}
+
+/**
+ * Thin wrapper: returns just the windowed map. Preserves the original
+ * `options.today` semantics (grid anchor + upper bound), so existing tests
+ * and callers don't need to change.
+ */
+export function buildActivityMap(
+	source: DataSource,
+	settings: VaultPulseSettings,
+	options: BuildOptions = {}
+): ActivityMap {
+	const pinned = options.today;
+	return buildVaultActivity(source, settings, {
+		today: pinned,
+		anchor: pinned,
+	}).windowed;
+}
+
+/**
+ * Thin wrapper: returns just `allActivity`. Per-day file counts across the
+ * WHOLE vault (not just the heatmap window). Streak walkers can still treat
+ * this as a set via `.has(iso)`.
+ */
+export function buildAllActivity(
+	source: DataSource,
+	settings: VaultPulseSettings,
+	options: BuildOptions = {}
+): Map<string, number> {
+	return buildVaultActivity(source, settings, options).allActivity;
 }
 
 export function extractDates(

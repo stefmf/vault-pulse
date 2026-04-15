@@ -7,15 +7,29 @@ import {
 } from "./settings";
 import { VaultPulseView, VIEW_TYPE_VAULT_PULSE } from "./view";
 import { currentLocale, t } from "./i18n";
-import { buildActivityMap, buildAllActivity, fromApp } from "./data";
+import { buildVaultActivity, fromApp } from "./data";
 import { toISODate } from "./dateUtils";
 
 export const HOVER_LINK_SOURCE = "vault-pulse";
+
+/**
+ * When the view is open, it does the heavy scan once per refresh. The plugin
+ * caches that scan's outputs here so the status bar can read them without
+ * re-walking the vault. Treated as stale after `CACHE_MAX_AGE_MS`.
+ */
+interface StatusBarCache {
+	allActivity: Map<string, number>;
+	todayCount: number;
+	timestamp: number;
+}
+
+const CACHE_MAX_AGE_MS = 1500;
 
 export default class VaultPulsePlugin extends Plugin {
 	settings!: VaultPulseSettings;
 	private statusBarEl: HTMLElement | null = null;
 	private scheduleStatusBar: () => void = () => {};
+	private lastScan: StatusBarCache | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -68,10 +82,15 @@ export default class VaultPulsePlugin extends Plugin {
 		// refresh on vault/metadata events. Independent of whether the view is
 		// mounted — the widget is the always-on summary, the pane is the deep
 		// dive.
+		//
+		// Debounce is trailing-only (no leading flag) so a burst of file events
+		// — e.g. an Obsidian Git commit touching 50 files — collapses into a
+		// single scan after 1s of quiet rather than firing at the burst's
+		// leading edge AND trailing edge. 1000ms is comfortable for an ambient
+		// widget; the pane (when open) has its own faster 200ms refresh.
 		this.scheduleStatusBar = debounce(
 			() => this.renderStatusBar(),
-			200,
-			true
+			1000
 		);
 		this.refreshStatusBar();
 		this.registerEvent(
@@ -164,15 +183,46 @@ export default class VaultPulsePlugin extends Plugin {
 		this.renderStatusBar();
 	}
 
+	/**
+	 * Called by the view after a successful refresh so the status bar can
+	 * reuse the scan it already paid for. Cache is consulted inside
+	 * `renderStatusBar` before falling back to its own scan.
+	 */
+	publishScanCache(allActivity: Map<string, number>, todayCount: number): void {
+		this.lastScan = {
+			allActivity,
+			todayCount,
+			timestamp: Date.now(),
+		};
+		// Repaint the status bar with the freshly-known data; skip the debounce
+		// because the view has already done the heavy lifting.
+		this.renderStatusBar();
+	}
+
 	private renderStatusBar(): void {
 		const el = this.statusBarEl;
 		if (!el) return;
 
-		const source = fromApp(this.app);
-		const allActivity = buildAllActivity(source, this.settings);
 		const todayIso = toISODate(DateTime.local().startOf("day"));
-		const todayCount =
-			buildActivityMap(source, this.settings).get(todayIso)?.count ?? 0;
+
+		let allActivity: Map<string, number>;
+		let todayCount: number;
+		const cache = this.lastScan;
+		if (cache && Date.now() - cache.timestamp < CACHE_MAX_AGE_MS) {
+			allActivity = cache.allActivity;
+			todayCount = cache.todayCount;
+		} else {
+			const source = fromApp(this.app);
+			const scan = buildVaultActivity(source, this.settings);
+			allActivity = scan.allActivity;
+			todayCount = scan.windowed.get(todayIso)?.count ?? 0;
+			this.lastScan = {
+				allActivity,
+				todayCount,
+				timestamp: Date.now(),
+			};
+		}
+
 		const streak = computeStreakFromSet(allActivity, todayIso);
 
 		el.empty();
