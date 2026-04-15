@@ -240,12 +240,23 @@ export class VaultPulseView extends ItemView {
 			// nodes when only counts changed.
 			updateHeatmapCells(this.gridEl, this.activityMap, buckets);
 			if (this.plugin.settings.showSparkline) {
-				updateSparklineBars(
-					this.sparklineEl,
-					this.activityMap,
-					buckets,
-					windowEnd
-				);
+				// If the user just toggled the sparkline ON (was OFF), no bars
+				// exist yet — fall back to a full sparkline render. Otherwise
+				// in-place update preserves bars + their click handlers.
+				const hasBars =
+					this.sparklineEl.querySelector(
+						".vault-pulse-sparkline-bar"
+					) !== null;
+				if (hasBars) {
+					updateSparklineBars(
+						this.sparklineEl,
+						this.activityMap,
+						buckets,
+						windowEnd
+					);
+				} else {
+					this.renderSparklineIfVisible(buckets, windowEnd);
+				}
 			} else {
 				this.sparklineEl.empty();
 			}
