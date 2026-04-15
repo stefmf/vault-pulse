@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type VaultPulsePlugin from "./main";
+import { t } from "./i18n";
 
 export type ActivitySource = "modified" | "created" | "combined";
 export type ColorBase = "theme" | "green" | "heat" | "sunset" | "custom";
@@ -13,6 +14,11 @@ export interface VaultPulseSettings {
 	windowDays: WindowDays;
 	excludeFolders: string;
 	includeTags: string;
+	showSparkline: boolean;
+	showStreakCounter: boolean;
+	showMiniStats: boolean;
+	showStatusBar: boolean;
+	longestStreak: number;
 }
 
 export const DEFAULT_SETTINGS: VaultPulseSettings = {
@@ -23,6 +29,11 @@ export const DEFAULT_SETTINGS: VaultPulseSettings = {
 	windowDays: 365,
 	excludeFolders: "",
 	includeTags: "",
+	showSparkline: true,
+	showStreakCounter: true,
+	showMiniStats: true,
+	showStatusBar: true,
+	longestStreak: 0,
 };
 
 const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
@@ -40,15 +51,13 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Activity source")
-			.setDesc(
-				"Which timestamp counts as activity for a given day. Combined dedupes when created and modified fall on the same day."
-			)
+			.setName(t("settings.activitySource"))
+			.setDesc(t("settings.activitySourceDesc"))
 			.addDropdown((dd) =>
 				dd
-					.addOption("combined", "Created or modified")
-					.addOption("modified", "Modified only")
-					.addOption("created", "Created only")
+					.addOption("combined", t("settings.activitySourceCombined"))
+					.addOption("modified", t("settings.activitySourceModified"))
+					.addOption("created", t("settings.activitySourceCreated"))
 					.setValue(this.plugin.settings.activitySource)
 					.onChange(async (value) => {
 						this.plugin.settings.activitySource = value as ActivitySource;
@@ -57,17 +66,15 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Color palette")
-			.setDesc(
-				"Color scheme for active cells. Auto follows your Obsidian theme's interactive-accent color; named palettes use their own hues."
-			)
+			.setName(t("settings.colorPalette"))
+			.setDesc(t("settings.colorPaletteDesc"))
 			.addDropdown((dd) =>
 				dd
-					.addOption("theme", "Auto (theme accent)")
-					.addOption("green", "Green (GitHub-style)")
-					.addOption("heat", "Heat (orange → red)")
-					.addOption("sunset", "Sunset (gold → indigo)")
-					.addOption("custom", "Custom hex")
+					.addOption("theme", t("settings.colorPaletteTheme"))
+					.addOption("green", t("settings.colorPaletteGreen"))
+					.addOption("heat", t("settings.colorPaletteHeat"))
+					.addOption("sunset", t("settings.colorPaletteSunset"))
+					.addOption("custom", t("settings.colorPaletteCustom"))
 					.setValue(this.plugin.settings.colorBase)
 					.onChange(async (value) => {
 						this.plugin.settings.colorBase = value as ColorBase;
@@ -78,8 +85,8 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.colorBase === "custom") {
 			new Setting(containerEl)
-				.setName("Custom hex color")
-				.setDesc("Hex color like #39d353. Used when color palette is set to custom.")
+				.setName(t("settings.customHex"))
+				.setDesc(t("settings.customHexDesc"))
 				.addText((text) =>
 					text
 						.setPlaceholder("#39d353")
@@ -96,15 +103,13 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl)
-			.setName("Window length")
-			.setDesc(
-				"How many days the heatmap spans. Shorter ranges give a narrower grid with finer detail."
-			)
+			.setName(t("settings.windowLength"))
+			.setDesc(t("settings.windowLengthDesc"))
 			.addDropdown((dd) =>
 				dd
-					.addOption("90", "90 days")
-					.addOption("180", "180 days")
-					.addOption("365", "365 days")
+					.addOption("90", t("settings.windowLength90"))
+					.addOption("180", t("settings.windowLength180"))
+					.addOption("365", t("settings.windowLength365"))
 					.setValue(String(this.plugin.settings.windowDays))
 					.onChange(async (value) => {
 						this.plugin.settings.windowDays = parseInt(
@@ -116,12 +121,12 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Week starts on")
-			.setDesc("First day of the week in the grid.")
+			.setName(t("settings.weekStart"))
+			.setDesc(t("settings.weekStartDesc"))
 			.addDropdown((dd) =>
 				dd
-					.addOption("0", "Sunday")
-					.addOption("1", "Monday")
+					.addOption("0", t("settings.weekStartSunday"))
+					.addOption("1", t("settings.weekStartMonday"))
 					.setValue(String(this.plugin.settings.weekStart))
 					.onChange(async (value) => {
 						this.plugin.settings.weekStart = parseInt(value, 10) as 0 | 1;
@@ -130,13 +135,11 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Exclude folders")
-			.setDesc(
-				"Comma-separated list of folder paths to skip when counting activity. Matches by prefix — e.g. Archive skips Archive/... but not My-Archive/..."
-			)
+			.setName(t("settings.excludeFolders"))
+			.setDesc(t("settings.excludeFoldersDesc"))
 			.addText((text) =>
 				text
-					.setPlaceholder("Archive, _templates")
+					.setPlaceholder(t("settings.excludeFoldersPlaceholder"))
 					.setValue(this.plugin.settings.excludeFolders)
 					.onChange(async (value) => {
 						this.plugin.settings.excludeFolders = value;
@@ -145,17 +148,66 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Include tags")
-			.setDesc(
-				"Comma-separated list of tags. If set, only files with at least one of these tags count. Leave empty to include all files. Leading # is optional."
-			)
+			.setName(t("settings.includeTags"))
+			.setDesc(t("settings.includeTagsDesc"))
 			.addText((text) =>
 				text
-					.setPlaceholder("Project, journal")
+					.setPlaceholder(t("settings.includeTagsPlaceholder"))
 					.setValue(this.plugin.settings.includeTags)
 					.onChange(async (value) => {
 						this.plugin.settings.includeTags = value;
 						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl).setName(t("settings.visibility")).setHeading();
+
+		new Setting(containerEl)
+			.setName(t("settings.showSparkline"))
+			.setDesc(t("settings.showSparklineDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showSparkline)
+					.onChange(async (value) => {
+						this.plugin.settings.showSparkline = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.showStreakCounter"))
+			.setDesc(t("settings.showStreakCounterDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showStreakCounter)
+					.onChange(async (value) => {
+						this.plugin.settings.showStreakCounter = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.showMiniStats"))
+			.setDesc(t("settings.showMiniStatsDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showMiniStats)
+					.onChange(async (value) => {
+						this.plugin.settings.showMiniStats = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.showStatusBar"))
+			.setDesc(t("settings.showStatusBarDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showStatusBar)
+					.onChange(async (value) => {
+						this.plugin.settings.showStatusBar = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshStatusBar();
 					})
 			);
 	}

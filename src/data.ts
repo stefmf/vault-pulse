@@ -77,6 +77,57 @@ export function buildActivityMap(
 	return map;
 }
 
+/**
+ * Per-day file counts across the WHOLE vault (not just within the configured
+ * window). Returns `Map<isoDate, count>`.
+ *
+ * Why it exists: `buildActivityMap` scopes its output to the heatmap window
+ * (max 365 days) for rendering, but the streak walk AND the detail panel's
+ * mini-stats line need to see activity past that boundary — otherwise a
+ * 2-year streak would display as "367-day streak" and "this year" totals
+ * would cap at the window.
+ *
+ * Streak walkers can still treat this as a set via `.has(iso)`.
+ * Same filter semantics as `buildActivityMap` (excludeFolders, includeTags,
+ * activitySource). Dedupes when a file's created+updated fall on the same
+ * day so the count matches `buildActivityMap`'s `day.count`.
+ */
+export function buildAllActivity(
+	source: DataSource,
+	settings: VaultPulseSettings,
+	options: BuildOptions = {}
+): Map<string, number> {
+	const today = (options.today ?? DateTime.local()).startOf("day");
+	const todayIso = toISODate(today);
+
+	const excludedFolders = parseCsvList(settings.excludeFolders);
+	const includedTags = parseCsvList(settings.includeTags).map(normalizeTag);
+
+	const counts = new Map<string, number>();
+
+	for (const file of source.getMarkdownFiles()) {
+		const cache = source.getFileCache(file);
+		if (!fileMatchesFilters(file, cache, excludedFolders, includedTags)) continue;
+
+		const { created, updated } = extractDates(file, cache);
+
+		const touched = new Set<string>();
+		if (settings.activitySource !== "modified" && created) {
+			touched.add(toISODate(created));
+		}
+		if (settings.activitySource !== "created" && updated) {
+			touched.add(toISODate(updated));
+		}
+
+		for (const iso of touched) {
+			if (iso > todayIso) continue;
+			counts.set(iso, (counts.get(iso) ?? 0) + 1);
+		}
+	}
+
+	return counts;
+}
+
 export function extractDates(
 	file: TFile,
 	cache: CachedMetadata | null

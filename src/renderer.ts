@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { setTooltip } from "obsidian";
+import { setIcon, setTooltip } from "obsidian";
 import {
 	computeGridStart,
 	computeMonthLabels,
@@ -113,7 +113,11 @@ function renderCellsGrid(
 	grid.style.setProperty("--vp-total-cols", String(cols));
 
 	const frag = document.createDocumentFragment();
-	const todayIso = toISODate(today);
+	// `today` here is the grid's right edge (= real today when unpaged, a
+	// historic date when paged). The "today" outline must always track the
+	// real calendar date so a paged view can still highlight today if it
+	// happens to fall inside the visible window.
+	const realTodayIso = toISODate(DateTime.local().startOf("day"));
 
 	let cursor = gridStart;
 	while (cursor <= today) {
@@ -129,7 +133,7 @@ function renderCellsGrid(
 		cell.dataset.date = iso;
 		cell.dataset.count = String(count);
 		cell.dataset.level = String(level);
-		if (iso === todayIso) cell.dataset.today = "1";
+		if (iso === realTodayIso) cell.dataset.today = "1";
 		cell.style.gridRow = String(row + 1);
 		cell.style.gridColumn = String(col + 1);
 		cell.setAttribute("role", "gridcell");
@@ -145,6 +149,60 @@ function renderCellsGrid(
 
 	grid.appendChild(frag);
 	return grid;
+}
+
+export interface PagerOptions {
+	container: HTMLElement;
+	visible: boolean;
+	canPrev: boolean;
+	canNext: boolean;
+	rangeLabel: string;
+	prevLabel: string;
+	nextLabel: string;
+	onPrev: () => void;
+	onNext: () => void;
+}
+
+/**
+ * Compact pager row — `◀ [range] ▶` — for stepping the heatmap backward
+ * through history one window at a time. Hidden via `.is-hidden` when there's
+ * no older activity AND the user hasn't paged away, so it takes no layout
+ * space in the common case.
+ */
+export function renderPager(options: PagerOptions): void {
+	const { container, visible, canPrev, canNext, rangeLabel, prevLabel, nextLabel, onPrev, onNext } = options;
+	container.empty();
+	container.classList.toggle("is-hidden", !visible);
+	if (!visible) return;
+
+	container.appendChild(buildPagerButton("chevron-left", prevLabel, canPrev, onPrev));
+
+	const label = document.createElement("span");
+	label.className = "vault-pulse-pager-label";
+	label.textContent = rangeLabel;
+	container.appendChild(label);
+
+	container.appendChild(buildPagerButton("chevron-right", nextLabel, canNext, onNext));
+}
+
+function buildPagerButton(
+	icon: string,
+	ariaLabel: string,
+	enabled: boolean,
+	onClick: () => void
+): HTMLElement {
+	const btn = document.createElement("button");
+	btn.className = "vault-pulse-pager-btn";
+	btn.type = "button";
+	btn.setAttribute("aria-label", ariaLabel);
+	btn.disabled = !enabled;
+	setIcon(btn, icon);
+	setTooltip(btn, ariaLabel, { placement: "top" });
+	btn.addEventListener("click", (evt) => {
+		evt.stopPropagation();
+		if (!btn.disabled) onClick();
+	});
+	return btn;
 }
 
 export function renderEmptyState(container: HTMLElement, message: string): void {
@@ -185,6 +243,7 @@ export function renderLegend(container: HTMLElement): void {
 export interface SparklineOptions {
 	container: HTMLElement;
 	activityMap: ActivityMap;
+	buckets: QuantileBuckets;
 	today?: DateTime;
 	days?: number;
 	onSelect: (iso: string, count: number) => void;
@@ -194,15 +253,16 @@ export interface SparklineOptions {
  * Render the last-N-days sparkline — a compact bar chart of recent activity
  * that stays visible even when the user has scrolled the main heatmap left.
  *
- * Bars use the interactive-accent color for "active" days and the border color
- * for empty days. Height scales with count relative to the window's max.
- * Clicking a bar selects that day (routed through the same onCellSelect
- * callback the grid uses).
+ * Bars encode activity with BOTH height (proportional to count within the
+ * 30-day window) and color (the same 0..4 palette levels as the main grid,
+ * via the shared quantile buckets). Clicking a bar selects that day through
+ * the same callback the grid uses.
  */
 export function renderSparkline(options: SparklineOptions): void {
 	const {
 		container,
 		activityMap,
+		buckets,
 		today = DateTime.local().startOf("day"),
 		days = 30,
 		onSelect,
@@ -226,16 +286,20 @@ export function renderSparkline(options: SparklineOptions): void {
 
 	const maxCount = Math.max(1, ...bars.map((b) => b.count));
 
-	for (const bar of bars) {
+	bars.forEach((bar, idx) => {
 		const el = document.createElement("div");
 		el.className = "vault-pulse-sparkline-bar";
 		el.dataset.date = bar.iso;
 		el.dataset.count = String(bar.count);
+		el.dataset.level = String(levelForCount(bar.count, buckets));
 		el.setAttribute("role", "button");
 		el.tabIndex = -1;
 
 		const pct = bar.count === 0 ? 6 : 15 + (bar.count / maxCount) * 85;
-		el.style.height = `${pct}%`;
+		el.setCssProps({
+			"height": `${pct}%`,
+			"--vp-bar-idx": String(idx),
+		});
 
 		if (bar.count > 0) {
 			el.classList.add("is-active");
@@ -250,5 +314,5 @@ export function renderSparkline(options: SparklineOptions): void {
 		});
 
 		container.appendChild(el);
-	}
+	});
 }

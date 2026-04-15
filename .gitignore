@@ -29,3 +29,6 @@ npm-debug.log*
 # Env
 .env
 .env.local
+
+# Local Claude Code per-project config
+.claude/
