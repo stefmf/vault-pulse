@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { DateTime } from "luxon";
 import { TFile, type CachedMetadata } from "obsidian";
-import { buildActivityMap, extractDates, type DataSource } from "../src/data";
+import {
+	buildActivityMap,
+	buildVaultActivity,
+	extractDates,
+	fingerprintActivity,
+	parseFilters,
+	type DataSource,
+} from "../src/data";
 import { DEFAULT_SETTINGS, type VaultPulseSettings } from "../src/settings";
 
 function mkFile(path: string, ctime: number, mtime: number): TFile {
@@ -310,5 +317,78 @@ describe("buildActivityMap filters", () => {
 			today: TODAY,
 		});
 		expect(map.get("2026-04-12")?.count).toBe(3);
+	});
+});
+
+describe("fingerprintActivity", () => {
+	const ts = (iso: string) => DateTime.fromISO(iso).toMillis();
+
+	it("returns identical fingerprints for identical scans", () => {
+		const today = ts("2026-04-12");
+		const files = [mkFile("a.md", today, today), mkFile("b.md", today, today)];
+		const a = buildVaultActivity(mkSource(files), settings(), { today: TODAY });
+		const b = buildVaultActivity(mkSource(files), settings(), { today: TODAY });
+		expect(fingerprintActivity(a.windowed, a.allActivity)).toBe(
+			fingerprintActivity(b.windowed, b.allActivity)
+		);
+	});
+
+	it("differs when a windowed day's count changes", () => {
+		const today = ts("2026-04-12");
+		const before = buildVaultActivity(
+			mkSource([mkFile("a.md", today, today)]),
+			settings(),
+			{ today: TODAY }
+		);
+		const after = buildVaultActivity(
+			mkSource([mkFile("a.md", today, today), mkFile("b.md", today, today)]),
+			settings(),
+			{ today: TODAY }
+		);
+		expect(fingerprintActivity(before.windowed, before.allActivity)).not.toBe(
+			fingerprintActivity(after.windowed, after.allActivity)
+		);
+	});
+
+	it("differs when allActivity gains a day outside the window", () => {
+		const insideWindow = ts("2026-04-12");
+		const longAgo = DateTime.fromISO("2024-01-01").toMillis();
+		const before = buildVaultActivity(
+			mkSource([mkFile("a.md", insideWindow, insideWindow)]),
+			settings(),
+			{ today: TODAY }
+		);
+		const after = buildVaultActivity(
+			mkSource([
+				mkFile("a.md", insideWindow, insideWindow),
+				mkFile("old.md", longAgo, longAgo),
+			]),
+			settings(),
+			{ today: TODAY }
+		);
+		expect(fingerprintActivity(before.windowed, before.allActivity)).not.toBe(
+			fingerprintActivity(after.windowed, after.allActivity)
+		);
+	});
+});
+
+describe("parseFilters + buildVaultActivity reuse", () => {
+	const ts = (iso: string) => DateTime.fromISO(iso).toMillis();
+
+	it("yields the same scan when filters are pre-parsed vs inline-parsed", () => {
+		const today = ts("2026-04-12");
+		const files = [
+			mkFile("Archive/a.md", today, today),
+			mkFile("notes/b.md", today, today),
+		];
+		const config = settings({ excludeFolders: "Archive" });
+		const inline = buildVaultActivity(mkSource(files), config, { today: TODAY });
+		const preParsed = buildVaultActivity(mkSource(files), config, {
+			today: TODAY,
+			filters: parseFilters(config),
+		});
+		expect(fingerprintActivity(inline.windowed, inline.allActivity)).toBe(
+			fingerprintActivity(preParsed.windowed, preParsed.allActivity)
+		);
 	});
 });

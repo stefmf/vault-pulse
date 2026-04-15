@@ -207,7 +207,6 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.showStatusBar = value;
 						await this.plugin.saveSettings();
-						this.plugin.refreshStatusBar();
 					})
 			);
 	}

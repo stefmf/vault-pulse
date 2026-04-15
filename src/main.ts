@@ -7,29 +7,23 @@ import {
 } from "./settings";
 import { VaultPulseView, VIEW_TYPE_VAULT_PULSE } from "./view";
 import { currentLocale, t } from "./i18n";
-import { buildVaultActivity, fromApp } from "./data";
+import {
+	buildVaultActivity,
+	fromApp,
+	parseFilters,
+	type ParsedFilters,
+	type VaultActivity,
+} from "./data";
 import { toISODate } from "./dateUtils";
 
 export const HOVER_LINK_SOURCE = "vault-pulse";
 
-/**
- * When the view is open, it does the heavy scan once per refresh. The plugin
- * caches that scan's outputs here so the status bar can read them without
- * re-walking the vault. Treated as stale after `CACHE_MAX_AGE_MS`.
- */
-interface StatusBarCache {
-	allActivity: Map<string, number>;
-	todayCount: number;
-	timestamp: number;
-}
-
-const CACHE_MAX_AGE_MS = 1500;
-
 export default class VaultPulsePlugin extends Plugin {
 	settings!: VaultPulseSettings;
 	private statusBarEl: HTMLElement | null = null;
-	private scheduleStatusBar: () => void = () => {};
-	private lastScan: StatusBarCache | null = null;
+	private scheduleRefresh: () => void = () => {};
+	private latestScan: VaultActivity | null = null;
+	private parsedFiltersCache: ParsedFilters | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -78,35 +72,38 @@ export default class VaultPulsePlugin extends Plugin {
 
 		this.addSettingTab(new VaultPulseSettingTab(this.app, this));
 
-		// Status bar widget. Rendered once on load, kept fresh via debounced
-		// refresh on vault/metadata events. Independent of whether the view is
-		// mounted — the widget is the always-on summary, the pane is the deep
-		// dive.
-		//
-		// Debounce is trailing-only (no leading flag) so a burst of file events
-		// — e.g. an Obsidian Git commit touching 50 files — collapses into a
-		// single scan after 1s of quiet rather than firing at the burst's
-		// leading edge AND trailing edge. 1000ms is comfortable for an ambient
-		// widget; the pane (when open) has its own faster 200ms refresh.
-		this.scheduleStatusBar = debounce(
-			() => this.renderStatusBar(),
-			1000
-		);
-		this.refreshStatusBar();
+		// Plugin is the sole vault-event subscriber. On any file change it does
+		// ONE scan, then notifies every mounted view + repaints the status bar.
+		// 200ms trailing-edge debounce collapses bursts (e.g. an Obsidian Git
+		// commit of 50 files) into a single scan after the burst settles.
+		this.scheduleRefresh = debounce(() => this.refreshAll(), 200);
+
+		this.refreshStatusBarItem();
+		this.refreshAll();
+
 		this.registerEvent(
-			this.app.metadataCache.on("changed", () => this.scheduleStatusBar())
+			this.app.metadataCache.on("changed", () => this.scheduleRefresh())
 		);
 		this.registerEvent(
-			this.app.vault.on("create", () => this.scheduleStatusBar())
+			this.app.vault.on("create", () => this.scheduleRefresh())
 		);
 		this.registerEvent(
-			this.app.vault.on("modify", () => this.scheduleStatusBar())
+			this.app.vault.on("modify", () => this.scheduleRefresh())
 		);
 		this.registerEvent(
-			this.app.vault.on("delete", () => this.scheduleStatusBar())
+			this.app.vault.on("delete", () => this.scheduleRefresh())
 		);
 		this.registerEvent(
-			this.app.vault.on("rename", () => this.scheduleStatusBar())
+			this.app.vault.on("rename", () => this.scheduleRefresh())
+		);
+
+		// When the workspace layout changes (sidebar collapse/expand, split,
+		// pane drag), give every visible view a chance to flush a pending
+		// render queued while it was hidden.
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				for (const view of this.eachView()) view.flushIfPending();
+			})
 		);
 	}
 
@@ -135,11 +132,8 @@ export default class VaultPulsePlugin extends Plugin {
 
 	async jumpToToday(): Promise<void> {
 		await this.activateView();
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_VAULT_PULSE)) {
-			const view = leaf.view;
-			if (view instanceof VaultPulseView) {
-				view.scrollToToday();
-			}
+		for (const view of this.eachView()) {
+			view.scrollToToday();
 		}
 	}
 
@@ -153,21 +147,59 @@ export default class VaultPulsePlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_VAULT_PULSE)) {
-			const view = leaf.view;
-			if (view instanceof VaultPulseView) {
-				view.refresh();
-			}
-		}
-		this.refreshStatusBar();
+		// Settings might have changed filter strings — invalidate the cache so
+		// the next scan re-parses.
+		this.parsedFiltersCache = null;
+		this.refreshStatusBarItem();
+		this.refreshAll();
 	}
 
 	/**
-	 * Rebuild the status bar item, toggling it on/off per the current setting.
-	 * Called after settings changes (toggle on/off) AND after any file event
-	 * that might have advanced the streak or today's count.
+	 * The plugin's central refresh path. Runs the vault scan ONCE and pushes
+	 * the result to every mounted view and to the status bar. Triggered by
+	 * vault/metadata events (debounced) or directly by `saveSettings`.
 	 */
-	refreshStatusBar(): void {
+	refreshAll(): void {
+		const scan = this.runScan();
+		this.latestScan = scan;
+		for (const view of this.eachView()) view.onDataChanged(scan);
+		this.renderStatusBar(scan);
+	}
+
+	/** Synchronous accessor for views that need data outside of the event flow. */
+	getLatestScan(): VaultActivity {
+		if (!this.latestScan) {
+			this.latestScan = this.runScan();
+		}
+		return this.latestScan;
+	}
+
+	/** Cached + lazily-parsed filter lists. Invalidated by `saveSettings`. */
+	getFilters(): ParsedFilters {
+		if (!this.parsedFiltersCache) {
+			this.parsedFiltersCache = parseFilters(this.settings);
+		}
+		return this.parsedFiltersCache;
+	}
+
+	private runScan(): VaultActivity {
+		return buildVaultActivity(fromApp(this.app), this.settings, {
+			filters: this.getFilters(),
+		});
+	}
+
+	private *eachView(): Generator<VaultPulseView> {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_VAULT_PULSE)) {
+			const view = leaf.view;
+			if (view instanceof VaultPulseView) yield view;
+		}
+	}
+
+	/**
+	 * Toggle the status bar item on/off based on the current setting. Cheap;
+	 * the actual content render happens in `renderStatusBar`.
+	 */
+	private refreshStatusBarItem(): void {
 		if (!this.settings.showStatusBar) {
 			this.statusBarEl?.remove();
 			this.statusBarEl = null;
@@ -180,50 +212,15 @@ export default class VaultPulsePlugin extends Plugin {
 				void this.activateView();
 			});
 		}
-		this.renderStatusBar();
 	}
 
-	/**
-	 * Called by the view after a successful refresh so the status bar can
-	 * reuse the scan it already paid for. Cache is consulted inside
-	 * `renderStatusBar` before falling back to its own scan.
-	 */
-	publishScanCache(allActivity: Map<string, number>, todayCount: number): void {
-		this.lastScan = {
-			allActivity,
-			todayCount,
-			timestamp: Date.now(),
-		};
-		// Repaint the status bar with the freshly-known data; skip the debounce
-		// because the view has already done the heavy lifting.
-		this.renderStatusBar();
-	}
-
-	private renderStatusBar(): void {
+	private renderStatusBar(scan: VaultActivity): void {
 		const el = this.statusBarEl;
 		if (!el) return;
 
 		const todayIso = toISODate(DateTime.local().startOf("day"));
-
-		let allActivity: Map<string, number>;
-		let todayCount: number;
-		const cache = this.lastScan;
-		if (cache && Date.now() - cache.timestamp < CACHE_MAX_AGE_MS) {
-			allActivity = cache.allActivity;
-			todayCount = cache.todayCount;
-		} else {
-			const source = fromApp(this.app);
-			const scan = buildVaultActivity(source, this.settings);
-			allActivity = scan.allActivity;
-			todayCount = scan.windowed.get(todayIso)?.count ?? 0;
-			this.lastScan = {
-				allActivity,
-				todayCount,
-				timestamp: Date.now(),
-			};
-		}
-
-		const streak = computeStreakFromSet(allActivity, todayIso);
+		const todayCount = scan.allActivity.get(todayIso) ?? 0;
+		const streak = computeStreakFromSet(scan.allActivity, todayIso);
 
 		el.empty();
 
@@ -267,11 +264,7 @@ export default class VaultPulsePlugin extends Plugin {
 			setIcon(icon, "layout-grid");
 		}
 
-		setTooltip(
-			el,
-			buildStatusTooltip(streak, todayCount),
-			{ placement: "top" }
-		);
+		setTooltip(el, buildStatusTooltip(streak, todayCount), { placement: "top" });
 	}
 }
 

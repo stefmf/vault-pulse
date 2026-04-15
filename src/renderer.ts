@@ -205,6 +205,93 @@ function buildPagerButton(
 	return btn;
 }
 
+/**
+ * In-place attribute update on every existing heatmap cell. Used when the
+ * grid's date structure hasn't changed (no pager move, no calendar-day roll,
+ * no window-size change) so we can avoid the cost of `gridEl.empty()` +
+ * `renderHeatmap` rebuilding 365+ DOM nodes. Every cell already has the
+ * right `data-date`; we only refresh `data-count`, `data-level`, `data-today`,
+ * and `aria-label` where they differ.
+ *
+ * Preserves any classes maintained outside this module — `.is-selected`,
+ * `:focus-visible` — because we never touch them.
+ */
+export function updateHeatmapCells(
+	gridEl: HTMLElement,
+	activityMap: ActivityMap,
+	buckets: QuantileBuckets
+): void {
+	const realTodayIso = toISODate(DateTime.local().startOf("day"));
+	const cells = gridEl.querySelectorAll<HTMLElement>(".vault-pulse-cell");
+	cells.forEach((cell) => {
+		const iso = cell.dataset.date;
+		if (!iso) return;
+		const day = activityMap.get(iso);
+		const count = day?.count ?? 0;
+		const level = levelForCount(count, buckets);
+		const countStr = String(count);
+		const levelStr = String(level);
+
+		if (cell.dataset.count !== countStr) cell.dataset.count = countStr;
+		if (cell.dataset.level !== levelStr) cell.dataset.level = levelStr;
+
+		const isToday = iso === realTodayIso;
+		if (isToday && cell.dataset.today !== "1") cell.dataset.today = "1";
+		if (!isToday && cell.dataset.today) delete cell.dataset.today;
+
+		const newLabel = `${DateTime.fromISO(iso).toFormat(
+			"MMM d"
+		)}, ${count} ${count === 1 ? "file" : "files"}`;
+		if (cell.getAttribute("aria-label") !== newLabel) {
+			cell.setAttribute("aria-label", newLabel);
+		}
+	});
+}
+
+/**
+ * In-place update of the sparkline bars. Same idea as `updateHeatmapCells` —
+ * use only when the bar's date set hasn't changed (no pager move). Updates
+ * height + count + level + `is-active` class without touching event handlers
+ * (which would still reference the right ISO via the unchanged `data-date`).
+ */
+export function updateSparklineBars(
+	container: HTMLElement,
+	activityMap: ActivityMap,
+	buckets: QuantileBuckets,
+	windowEnd: DateTime,
+	days = 30
+): void {
+	const bars = container.querySelectorAll<HTMLElement>(
+		".vault-pulse-sparkline-bar"
+	);
+	if (bars.length !== days) {
+		// Bar count mismatch — fall back to full re-render via the caller.
+		return;
+	}
+
+	let maxCount = 1;
+	const counts: number[] = [];
+	for (let i = days - 1; i >= 0; i--) {
+		const iso = toISODate(windowEnd.minus({ days: i }));
+		const count = activityMap.get(iso)?.count ?? 0;
+		if (count > maxCount) maxCount = count;
+		counts.push(count);
+	}
+
+	bars.forEach((bar, idx) => {
+		const count = counts[idx];
+		const level = levelForCount(count, buckets);
+		const pct = count === 0 ? 6 : 15 + (count / maxCount) * 85;
+		const countStr = String(count);
+		const levelStr = String(level);
+
+		if (bar.dataset.count !== countStr) bar.dataset.count = countStr;
+		if (bar.dataset.level !== levelStr) bar.dataset.level = levelStr;
+		bar.setCssProps({ height: `${pct}%` });
+		bar.classList.toggle("is-active", count > 0);
+	});
+}
+
 export function renderEmptyState(container: HTMLElement, message: string): void {
 	const el = document.createElement("div");
 	el.className = "vault-pulse-empty-state";
