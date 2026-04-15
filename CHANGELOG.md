@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-15
+
+### Changed
+
+- **Single-pass vault scan** — `buildActivityMap` and `buildAllActivity` previously each did their own full walk through every markdown file. Merged into `buildVaultActivity` which produces both outputs in one iteration; the old functions stay as thin wrappers for backward compatibility.
+- **Shared scan between plugin and view** — when the view is mounted, it publishes its already-computed `allActivity` + today's count into a plugin-level cache (`CACHE_MAX_AGE_MS = 1500ms`). The status bar reads from that cache before falling back to its own scan. Net effect on every file event when the pane is open: **one** vault walk instead of four.
+- **Trailing-edge debounce** on both the view's `scheduleRefresh` (200ms) and the plugin's `scheduleStatusBar` (was 200ms, **now 1000ms**). A burst of file events — e.g. an Obsidian Git commit of 50 files — now collapses to one scan after the burst settles instead of firing at both the leading and trailing edges.
+- **`workspace.on("css-change")` debounced** — was calling `this.refresh()` directly; now goes through `scheduleRefresh()` like every other event source.
+
+### Fixed
+
+- **App-wide sluggishness / glitchy sidebar scrolling with the plugin enabled** — the combined effect of the changes above. On large vaults with high event volume (dataview, git, sync), the plugin no longer holds the main thread long enough to drop frames elsewhere in Obsidian.
+
 ## [0.2.0] - 2026-04-15
 
 ### Added
