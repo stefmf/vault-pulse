@@ -383,12 +383,14 @@ settings:
 	border-bottom: 1px solid var(--background-modifier-border);
 	position: sticky;
 	top: 0;
-	/* Translucent + backdrop blur so the header tracks whatever the theme does
-	   behind the pane (translucent on Catppuccin / Minimal, solid on default)
-	   instead of imposing an opaque seam on themes that are otherwise blurred. */
-	background: color-mix(in srgb, var(--background-primary) 72%, transparent);
-	backdrop-filter: blur(12px) saturate(1.15);
-	-webkit-backdrop-filter: blur(12px) saturate(1.15);
+	/* Semi-transparent theme-primary background. Previously used
+	   `backdrop-filter: blur(12px) saturate(1.15)` to match translucent-sidebar
+	   themes (Catppuccin Frappe, Minimal), but backdrop-filter promoted the
+	   entire pane into a persistent compositor layer that caused visible
+	   ghosting in adjacent Obsidian surfaces (notably the left-sidebar file
+	   explorer) on large vaults. 92% opacity reads as "sits on top of the
+	   theme" without the GPU cost. */
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
 	z-index: 1;
 	box-shadow: 0 2px 8px transparent;
 	transition: box-shadow 150ms ease;

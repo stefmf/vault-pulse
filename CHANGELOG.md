@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-15
+
+### Fixed
+
+- **Compositor-layer ghosting across Obsidian's UI** when Vault Pulse was enabled — visible as faint double-drawn text in the file-explorer sidebar during scroll. Root cause: `backdrop-filter: blur(12px) saturate(1.15)` on the detail-panel sticky header forced the pane into a persistent GPU compositor layer that bled into sibling layers under paint pressure. Replaced with a 92%-opacity `color-mix(var(--background-primary), transparent)` background. The header still reads as "sitting on top of the pane" without the expensive backdrop blur.
+
 ## [0.2.1] - 2026-04-15
 
 ### Changed
