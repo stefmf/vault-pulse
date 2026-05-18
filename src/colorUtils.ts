@@ -151,7 +151,7 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 }
 
 function readThemeAccent(): string {
-	const computed = getComputedStyle(document.body)
+	const computed = getComputedStyle(activeDocument.body)
 		.getPropertyValue("--interactive-accent")
 		.trim();
 	return computed || GITHUB_GREEN;

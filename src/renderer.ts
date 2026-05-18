@@ -34,35 +34,30 @@ export function renderHeatmap(ctx: RenderContext): void {
 
 	container.style.setProperty("--vp-total-cols", String(cols));
 
-	const heatmap = document.createElement("div");
-	heatmap.className = "vault-pulse-heatmap";
-	container.appendChild(heatmap);
+	const heatmap = container.createDiv({ cls: "vault-pulse-heatmap" });
 
-	heatmap.appendChild(renderMonthLabelRow(gridStart, today, cols));
+	renderMonthLabelRow(heatmap, gridStart, today, cols);
 
-	const body = document.createElement("div");
-	body.className = "vault-pulse-body";
-	heatmap.appendChild(body);
+	const body = heatmap.createDiv({ cls: "vault-pulse-body" });
 
-	body.appendChild(renderDayLabelColumn(settings.weekStart));
-	body.appendChild(renderCellsGrid(activityMap, gridStart, today, buckets, settings));
+	renderDayLabelColumn(body, settings.weekStart);
+	renderCellsGrid(body, activityMap, gridStart, today, buckets, settings);
 }
 
 function renderMonthLabelRow(
+	parent: HTMLElement,
 	gridStart: DateTime,
 	today: DateTime,
 	cols: number
 ): HTMLElement {
-	const row = document.createElement("div");
-	row.className = "vault-pulse-months";
+	const row = parent.createDiv({ cls: "vault-pulse-months" });
 	row.style.setProperty("--vp-total-cols", String(cols));
 
 	const labels = computeMonthLabels(gridStart, today);
 	let prevYear = -1;
 
 	for (const label of labels) {
-		const span = document.createElement("span");
-		span.className = "vault-pulse-month-label";
+		const span = row.createSpan({ cls: "vault-pulse-month-label" });
 		if (prevYear !== -1 && label.year !== prevYear) {
 			span.textContent = `${label.year} · ${label.name}`;
 			span.classList.add("is-year-transition");
@@ -71,16 +66,14 @@ function renderMonthLabelRow(
 		}
 		span.style.gridColumnStart = String(label.startCol + 1);
 		span.style.gridColumnEnd = String(label.startCol + 1 + label.span);
-		row.appendChild(span);
 		prevYear = label.year;
 	}
 
 	return row;
 }
 
-function renderDayLabelColumn(weekStart: 0 | 1): HTMLElement {
-	const col = document.createElement("div");
-	col.className = "vault-pulse-day-labels";
+function renderDayLabelColumn(parent: HTMLElement, weekStart: 0 | 1): HTMLElement {
+	const col = parent.createDiv({ cls: "vault-pulse-day-labels" });
 
 	const labels =
 		weekStart === 0
@@ -88,31 +81,28 @@ function renderDayLabelColumn(weekStart: 0 | 1): HTMLElement {
 			: ["", "Tue", "", "Thu", "", "Sat", ""];
 
 	labels.forEach((text, i) => {
-		const el = document.createElement("span");
-		el.className = "vault-pulse-day-label";
-		el.textContent = text;
+		const el = col.createSpan({ cls: "vault-pulse-day-label", text });
 		el.style.gridRowStart = String(i + 1);
-		col.appendChild(el);
 	});
 
 	return col;
 }
 
 function renderCellsGrid(
+	parent: HTMLElement,
 	activityMap: ActivityMap,
 	gridStart: DateTime,
 	today: DateTime,
 	buckets: QuantileBuckets,
 	settings: VaultPulseSettings
 ): HTMLElement {
-	const grid = document.createElement("div");
-	grid.className = "vault-pulse-grid";
+	const grid = parent.createDiv({ cls: "vault-pulse-grid" });
 	grid.setAttribute("role", "grid");
 
 	const cols = totalColumns(gridStart, today);
 	grid.style.setProperty("--vp-total-cols", String(cols));
 
-	const frag = document.createDocumentFragment();
+	const frag = createFragment();
 	// `today` here is the grid's right edge (= real today when unpaged, a
 	// historic date when paged). The "today" outline must always track the
 	// real calendar date so a paged view can still highlight today if it
@@ -128,8 +118,7 @@ function renderCellsGrid(
 		const row = weekRow(cursor, settings.weekStart);
 		const col = weekColumn(cursor, gridStart);
 
-		const cell = document.createElement("div");
-		cell.className = "vault-pulse-cell";
+		const cell = frag.createDiv({ cls: "vault-pulse-cell" });
 		cell.dataset.date = iso;
 		cell.dataset.count = String(count);
 		cell.dataset.level = String(level);
@@ -143,7 +132,6 @@ function renderCellsGrid(
 		);
 		cell.tabIndex = -1;
 
-		frag.appendChild(cell);
 		cursor = cursor.plus({ days: 1 });
 	}
 
@@ -175,26 +163,27 @@ export function renderPager(options: PagerOptions): void {
 	container.classList.toggle("is-hidden", !visible);
 	if (!visible) return;
 
-	container.appendChild(buildPagerButton("chevron-left", prevLabel, canPrev, onPrev));
+	buildPagerButton(container, "chevron-left", prevLabel, canPrev, onPrev);
 
-	const label = document.createElement("span");
-	label.className = "vault-pulse-pager-label";
-	label.textContent = rangeLabel;
-	container.appendChild(label);
+	container.createSpan({
+		cls: "vault-pulse-pager-label",
+		text: rangeLabel,
+	});
 
-	container.appendChild(buildPagerButton("chevron-right", nextLabel, canNext, onNext));
+	buildPagerButton(container, "chevron-right", nextLabel, canNext, onNext);
 }
 
 function buildPagerButton(
+	parent: HTMLElement,
 	icon: string,
 	ariaLabel: string,
 	enabled: boolean,
 	onClick: () => void
-): HTMLElement {
-	const btn = document.createElement("button");
-	btn.className = "vault-pulse-pager-btn";
-	btn.type = "button";
-	btn.setAttribute("aria-label", ariaLabel);
+): HTMLButtonElement {
+	const btn = parent.createEl("button", {
+		cls: "vault-pulse-pager-btn",
+		attr: { type: "button", "aria-label": ariaLabel },
+	});
 	btn.disabled = !enabled;
 	setIcon(btn, icon);
 	setTooltip(btn, ariaLabel, { placement: "top" });
@@ -287,16 +276,17 @@ export function updateSparklineBars(
 
 		if (bar.dataset.count !== countStr) bar.dataset.count = countStr;
 		if (bar.dataset.level !== levelStr) bar.dataset.level = levelStr;
-		bar.setCssProps({ height: `${pct}%` });
+		// CSS variable indirection — the no-static-styles rule rejects real
+		// CSS properties on setCssProps (e.g. `height`) but permits custom
+		// props. The variable is resolved through .vault-pulse-sparkline-bar's
+		// rule in styles.css so themes/snippets can still override it.
+		bar.setCssProps({ "--vp-bar-height": `${pct}%` });
 		bar.classList.toggle("is-active", count > 0);
 	});
 }
 
 export function renderEmptyState(container: HTMLElement, message: string): void {
-	const el = document.createElement("div");
-	el.className = "vault-pulse-empty-state";
-	el.textContent = message;
-	container.appendChild(el);
+	container.createDiv({ cls: "vault-pulse-empty-state", text: message });
 }
 
 /**
@@ -306,25 +296,15 @@ export function renderLegend(container: HTMLElement): void {
 	container.empty();
 	container.addClass("vault-pulse-legend");
 
-	const less = document.createElement("span");
-	less.className = "vault-pulse-legend-label";
-	less.textContent = "Less";
-	container.appendChild(less);
+	container.createSpan({ cls: "vault-pulse-legend-label", text: "Less" });
 
-	const cells = document.createElement("div");
-	cells.className = "vault-pulse-legend-cells";
+	const cells = container.createDiv({ cls: "vault-pulse-legend-cells" });
 	for (let level = 0; level <= 4; level++) {
-		const cell = document.createElement("span");
-		cell.className = "vault-pulse-legend-cell";
+		const cell = cells.createSpan({ cls: "vault-pulse-legend-cell" });
 		cell.dataset.level = String(level);
-		cells.appendChild(cell);
 	}
-	container.appendChild(cells);
 
-	const more = document.createElement("span");
-	more.className = "vault-pulse-legend-label";
-	more.textContent = "More";
-	container.appendChild(more);
+	container.createSpan({ cls: "vault-pulse-legend-label", text: "More" });
 }
 
 export interface SparklineOptions {
@@ -374,8 +354,7 @@ export function renderSparkline(options: SparklineOptions): void {
 	const maxCount = Math.max(1, ...bars.map((b) => b.count));
 
 	bars.forEach((bar, idx) => {
-		const el = document.createElement("div");
-		el.className = "vault-pulse-sparkline-bar";
+		const el = container.createDiv({ cls: "vault-pulse-sparkline-bar" });
 		el.dataset.date = bar.iso;
 		el.dataset.count = String(bar.count);
 		el.dataset.level = String(levelForCount(bar.count, buckets));
@@ -383,8 +362,12 @@ export function renderSparkline(options: SparklineOptions): void {
 		el.tabIndex = -1;
 
 		const pct = bar.count === 0 ? 6 : 15 + (bar.count / maxCount) * 85;
+		// Custom-property assignments only — height resolves through
+		// `var(--vp-bar-height)` in styles.css, satisfying the
+		// no-static-styles-assignment rule's "use CSS classes" preference
+		// while keeping the value dynamic per data point.
 		el.setCssProps({
-			"height": `${pct}%`,
+			"--vp-bar-height": `${pct}%`,
 			"--vp-bar-idx": String(idx),
 		});
 
@@ -399,7 +382,5 @@ export function renderSparkline(options: SparklineOptions): void {
 			}`;
 			setTooltip(el, tooltip, { placement: "top" });
 		});
-
-		container.appendChild(el);
 	});
 }

@@ -1,6 +1,6 @@
 {
 	"name": "vault-pulse",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"description": "A GitHub-style activity heatmap of your vault's file activity across the last 365 days.",
 	"main": "main.js",
 	"type": "module",
@@ -30,7 +30,6 @@
 		"@types/luxon": "^3.4.2",
 		"@types/node": "^20.11.0",
 		"@typescript-eslint/parser": "^8.58.2",
-		"builtin-modules": "^3.3.0",
 		"esbuild": "^0.20.0",
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.1.9",

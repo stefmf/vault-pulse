@@ -150,6 +150,13 @@ settings:
 	box-shadow: inset 0 0 0 1px var(--text-normal);
 }
 
+/* Carry-over state — today is empty but yesterday's multi-day run is still
+   warm. Today's outline shifts to a muted yellow so the user notices the gap
+   without us actively warning them. Same shape, same size — color only. */
+.vault-pulse-cell[data-today="1"][data-streak-pending="1"] {
+	box-shadow: inset 0 0 0 1px var(--color-yellow, color-mix(in srgb, var(--color-orange, #f97316) 55%, var(--text-muted)));
+}
+
 .vault-pulse-cell:hover {
 	transform: scale(1.25);
 	box-shadow:
@@ -200,6 +207,13 @@ settings:
    muted so the accent is unambiguous. */
 .vault-pulse-status-flame .vault-pulse-status-icon {
 	color: var(--vp-streak-flame-color, var(--color-orange, #f97316));
+}
+
+/* Carry-over state — yesterday's streak is alive but today is empty. Flame
+   shifts to yellow; the number and everything else stay identical to the
+   active widget. Snapchat-style: visual state only, no text change. */
+.vault-pulse-status-flame[data-state="pending"] .vault-pulse-status-icon {
+	color: var(--color-yellow, color-mix(in srgb, var(--color-orange, #f97316) 55%, var(--text-muted)));
 }
 
 .vault-pulse-status-text {
@@ -301,6 +315,10 @@ settings:
 .vault-pulse-sparkline-bar {
 	position: relative;
 	flex: 1 1 0;
+	/* Renderer sets --vp-bar-height dynamically per data point; resolving
+	   through a CSS variable keeps the value class-driven so themes/snippets
+	   can override (e.g. fixed-height bars) without touching the plugin. */
+	height: var(--vp-bar-height, 6%);
 	min-width: 2px;
 	min-height: 2px;
 	/* Baseline for zero-count days: text-muted at low opacity stays legible
@@ -502,6 +520,15 @@ settings:
 
 .vault-pulse-streak-icon[data-kind="trophy"] {
 	color: var(--vp-streak-trophy-color);
+}
+
+/* Carry-over chip — today is empty but yesterday's run is still warm. Chip
+   text is identical to the active state; only the flame + trophy icons shift
+   to yellow. The yellow + the "No activity this day" placeholder below the
+   chip do the work, no vocabulary change. */
+.vault-pulse-detail-streak[data-state="pending"] .vault-pulse-streak-icon[data-kind="flame"],
+.vault-pulse-detail-streak[data-state="pending"] .vault-pulse-streak-icon[data-kind="trophy"] {
+	color: var(--color-yellow, color-mix(in srgb, var(--color-orange, #f97316) 55%, var(--text-muted)));
 }
 
 .vault-pulse-streak-text {

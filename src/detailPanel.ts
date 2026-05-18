@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { Menu, setIcon, TFile } from "obsidian";
 import { t } from "./i18n";
 import { computeStreakSymbols } from "./streakSymbols";
+import type { CarryOverStreak } from "./streaks";
 import type { ActivityDay } from "./types";
 
 export interface RecentStats {
@@ -21,6 +22,13 @@ export interface DetailPanelOptions {
 	isToday: boolean;
 	showStreakCounter: boolean;
 	showMiniStats: boolean;
+	/**
+	 * Yesterday's run, surfaced ONLY when today is selected, today is empty,
+	 * and yesterday was a multi-day streak. Renders a desaturated "Yesterday —
+	 * N days" chip in place of the active streak chip. `null` means there's
+	 * nothing to carry over (either today is active or no prior run exists).
+	 */
+	carryOver?: CarryOverStreak | null;
 	onOpen: (file: TFile) => void;
 	onJumpToToday: () => void;
 	onHoverPreview: (file: TFile, evt: MouseEvent, targetEl: HTMLElement) => void;
@@ -43,6 +51,7 @@ export function renderDetailPanel(options: DetailPanelOptions): void {
 		isToday,
 		showStreakCounter,
 		showMiniStats,
+		carryOver = null,
 		onOpen,
 		onJumpToToday,
 		onHoverPreview,
@@ -51,45 +60,42 @@ export function renderDetailPanel(options: DetailPanelOptions): void {
 	container.empty();
 
 	if (!iso) {
-		const empty = document.createElement("div");
-		empty.className = "vault-pulse-detail-placeholder";
-		empty.textContent = t("detail.placeholder");
-		container.appendChild(empty);
+		container.createDiv({
+			cls: "vault-pulse-detail-placeholder",
+			text: t("detail.placeholder"),
+		});
 		return;
 	}
 
 	const dt = DateTime.fromISO(iso);
 	const count = day?.count ?? 0;
 
-	container.appendChild(
-		buildHeader({
-			dt,
-			count,
-			streakCount,
-			streakStartIso,
-			longestStreak,
-			recentStats,
-			isToday,
-			showStreakCounter,
-			showMiniStats,
-			onJumpToToday,
-		})
-	);
+	buildHeader(container, {
+		dt,
+		count,
+		streakCount,
+		streakStartIso,
+		longestStreak,
+		recentStats,
+		isToday,
+		showStreakCounter,
+		showMiniStats,
+		carryOver,
+		onJumpToToday,
+	});
 
 	if (!day || day.count === 0) {
-		const empty = document.createElement("div");
-		empty.className = "vault-pulse-detail-placeholder";
-		empty.textContent = t("detail.noActivity");
-		container.appendChild(empty);
+		container.createDiv({
+			cls: "vault-pulse-detail-placeholder",
+			text: t("detail.noActivity"),
+		});
 		return;
 	}
 
-	const list = document.createElement("div");
-	list.className = "vault-pulse-detail-list";
-	container.appendChild(list);
+	const list = container.createDiv({ cls: "vault-pulse-detail-list" });
 
 	day.files.forEach((file, idx) => {
-		list.appendChild(buildFileRow(file, idx, onOpen, onHoverPreview));
+		buildFileRow(list, file, idx, onOpen, onHoverPreview);
 	});
 }
 
@@ -103,10 +109,11 @@ interface HeaderOptions {
 	isToday: boolean;
 	showStreakCounter: boolean;
 	showMiniStats: boolean;
+	carryOver: CarryOverStreak | null;
 	onJumpToToday: () => void;
 }
 
-function buildHeader(opts: HeaderOptions): HTMLElement {
+function buildHeader(parent: HTMLElement, opts: HeaderOptions): HTMLElement {
 	const {
 		dt,
 		count,
@@ -117,83 +124,99 @@ function buildHeader(opts: HeaderOptions): HTMLElement {
 		isToday,
 		showStreakCounter,
 		showMiniStats,
+		carryOver,
 		onJumpToToday,
 	} = opts;
 
-	const header = document.createElement("div");
-	header.className = "vault-pulse-detail-header";
+	const header = parent.createDiv({ cls: "vault-pulse-detail-header" });
 
-	const main = document.createElement("div");
-	main.className = "vault-pulse-detail-header-main";
-	header.appendChild(main);
+	const main = header.createDiv({ cls: "vault-pulse-detail-header-main" });
 
-	const title = document.createElement("div");
-	title.className = "vault-pulse-detail-title";
-	title.textContent = `${dt.toFormat("MMM d, yyyy")} · ${t("detail.files", {
-		count,
-	})}`;
-	main.appendChild(title);
+	main.createDiv({
+		cls: "vault-pulse-detail-title",
+		text: `${dt.toFormat("MMM d, yyyy")} · ${t("detail.files", { count })}`,
+	});
 
 	if (streakCount > 1 && showStreakCounter) {
-		main.appendChild(
-			buildStreakElement(streakCount, streakStartIso, longestStreak)
+		buildStreakElement(main, streakCount, streakStartIso, longestStreak, false);
+	} else if (
+		isToday &&
+		streakCount === 0 &&
+		showStreakCounter &&
+		carryOver &&
+		carryOver.count >= 2
+	) {
+		// Today is empty but yesterday's run still deserves visibility — pending
+		// state. Same chip layout, desaturated color, "Yesterday — N days"
+		// wording so the user reads it as past-tense / pause rather than active.
+		buildStreakElement(
+			main,
+			carryOver.count,
+			carryOver.startIso,
+			longestStreak,
+			true
 		);
 	}
 
 	if (showMiniStats) {
-		main.appendChild(buildRecentStatsElement(recentStats));
+		buildRecentStatsElement(main, recentStats);
 	}
 
 	if (!isToday) {
-		const btn = document.createElement("button");
-		btn.className = "vault-pulse-detail-today-btn";
-		btn.type = "button";
-		btn.textContent = t("detail.today");
+		const btn = header.createEl("button", {
+			cls: "vault-pulse-detail-today-btn",
+			text: t("detail.today"),
+			attr: { type: "button" },
+		});
 
-		const arrow = document.createElement("span");
-		arrow.className = "vault-pulse-detail-today-arrow";
+		const arrow = btn.createSpan({ cls: "vault-pulse-detail-today-arrow" });
 		setIcon(arrow, "arrow-right");
-		btn.appendChild(arrow);
 
 		btn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			onJumpToToday();
 		});
-		header.appendChild(btn);
 	}
 
 	return header;
 }
 
 function buildStreakElement(
+	parent: HTMLElement,
 	streakCount: number,
 	streakStartIso: string | null,
-	longestStreak: number
+	longestStreak: number,
+	pending: boolean
 ): HTMLElement {
 	const symbols = computeStreakSymbols(streakCount);
 
-	const streakEl = document.createElement("div");
-	streakEl.className = "vault-pulse-detail-streak";
+	const streakEl = parent.createDiv({ cls: "vault-pulse-detail-streak" });
+	if (pending) streakEl.dataset.state = "pending";
+	// Chip text is identical to the active state — only the flame color shifts
+	// in carry-over. The aria-label adds a "today is empty" hint so screen-reader
+	// users learn what the sighted user reads from the yellow flame.
 	streakEl.setAttribute(
 		"aria-label",
-		t("detail.streakAria", { days: streakCount })
+		t(pending ? "detail.streakAriaPending" : "detail.streakAria", {
+			days: streakCount,
+		})
 	);
 	streakEl.dataset.flames = String(symbols.flames);
 	streakEl.dataset.trophies = String(symbols.trophies);
 
-	streakEl.appendChild(buildStreakIcons(symbols));
+	buildStreakIcons(streakEl, symbols);
 
-	const text = document.createElement("span");
-	text.className = "vault-pulse-streak-text";
-	text.textContent = t("detail.streak", { days: streakCount });
-	streakEl.appendChild(text);
+	streakEl.createSpan({
+		cls: "vault-pulse-streak-text",
+		text: t("detail.streak", { days: streakCount }),
+	});
 
 	if (longestStreak > 0) {
-		const best = document.createElement("span");
-		best.className = "vault-pulse-streak-best";
+		const best = streakEl.createSpan({
+			cls: "vault-pulse-streak-best",
+			text: t("detail.streakBest", { days: longestStreak }),
+		});
 		if (streakCount >= longestStreak) best.classList.add("is-record");
-		best.textContent = t("detail.streakBest", { days: longestStreak });
-		streakEl.appendChild(best);
 	}
 
 	if (symbols.trophies > 0 && streakStartIso) {
@@ -219,58 +242,48 @@ function buildStreakElement(
 	return streakEl;
 }
 
-function buildRecentStatsElement(stats: RecentStats): HTMLElement {
-	const row = document.createElement("div");
-	row.className = "vault-pulse-detail-stats";
-
-	row.appendChild(
-		buildStatChip(String(stats.week), t("detail.statsWeek"))
-	);
-	row.appendChild(
-		buildStatChip(String(stats.month), t("detail.statsMonth"))
-	);
-	row.appendChild(
-		buildStatChip(String(stats.year), t("detail.statsYear"))
-	);
-
+function buildRecentStatsElement(
+	parent: HTMLElement,
+	stats: RecentStats
+): HTMLElement {
+	const row = parent.createDiv({ cls: "vault-pulse-detail-stats" });
+	buildStatChip(row, String(stats.week), t("detail.statsWeek"));
+	buildStatChip(row, String(stats.month), t("detail.statsMonth"));
+	buildStatChip(row, String(stats.year), t("detail.statsYear"));
 	return row;
 }
 
-function buildStatChip(value: string, label: string): HTMLElement {
-	const chip = document.createElement("span");
-	chip.className = "vault-pulse-detail-stat";
-
-	const v = chip.createSpan({ cls: "vault-pulse-detail-stat-value" });
-	v.textContent = value;
-
-	const l = chip.createSpan({ cls: "vault-pulse-detail-stat-label" });
-	l.textContent = label;
-
+function buildStatChip(
+	parent: HTMLElement,
+	value: string,
+	label: string
+): HTMLElement {
+	const chip = parent.createSpan({ cls: "vault-pulse-detail-stat" });
+	chip.createSpan({ cls: "vault-pulse-detail-stat-value", text: value });
+	chip.createSpan({ cls: "vault-pulse-detail-stat-label", text: label });
 	return chip;
 }
 
-function buildStreakIcons(symbols: {
-	flames: number;
-	trophies: number;
-}): HTMLElement {
-	const wrap = document.createElement("span");
-	wrap.className = "vault-pulse-streak-icons";
+function buildStreakIcons(
+	parent: HTMLElement,
+	symbols: { flames: number; trophies: number }
+): HTMLElement {
+	const wrap = parent.createSpan({ cls: "vault-pulse-streak-icons" });
 	wrap.setAttribute("aria-hidden", "true");
 
 	for (let i = 0; i < symbols.flames; i++) {
-		wrap.appendChild(makeIcon("flame"));
+		makeIcon(wrap, "flame");
 	}
 
 	if (symbols.trophies > 0) {
-		wrap.appendChild(makeIcon("trophy"));
+		makeIcon(wrap, "trophy");
 	}
 
 	return wrap;
 }
 
-function makeIcon(kind: "flame" | "trophy"): HTMLElement {
-	const icon = document.createElement("span");
-	icon.className = "vault-pulse-streak-icon";
+function makeIcon(parent: HTMLElement, kind: "flame" | "trophy"): HTMLElement {
+	const icon = parent.createSpan({ cls: "vault-pulse-streak-icon" });
 	icon.dataset.kind = kind;
 	setIcon(icon, kind);
 	return icon;
@@ -294,27 +307,26 @@ function openAnniversariesMenu(evt: MouseEvent, startIso: string): void {
 }
 
 function buildFileRow(
+	parent: HTMLElement,
 	file: TFile,
 	idx: number,
 	onOpen: (file: TFile) => void,
 	onHoverPreview: (file: TFile, evt: MouseEvent, targetEl: HTMLElement) => void
 ): HTMLElement {
-	const row = document.createElement("div");
-	row.className = "vault-pulse-detail-row";
+	const row = parent.createDiv({ cls: "vault-pulse-detail-row" });
 	row.setAttribute("role", "button");
 	row.tabIndex = 0;
 	row.title = file.path;
+	// CSS variable only — drives the stagger animation; not a real style prop.
 	row.setCssProps({ "--vp-row-idx": String(idx) });
 
-	const icon = document.createElement("span");
-	icon.className = "vault-pulse-detail-icon";
+	const icon = row.createSpan({ cls: "vault-pulse-detail-icon" });
 	setIcon(icon, "file-text");
-	row.appendChild(icon);
 
-	const label = document.createElement("span");
-	label.className = "vault-pulse-detail-name";
-	label.textContent = file.basename;
-	row.appendChild(label);
+	row.createSpan({
+		cls: "vault-pulse-detail-name",
+		text: file.basename,
+	});
 
 	const open = (evt: Event) => {
 		evt.stopPropagation();

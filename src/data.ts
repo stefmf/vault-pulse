@@ -244,7 +244,8 @@ export function extractFileTags(cache: CachedMetadata | null): Set<string> {
 	const tags = new Set<string>();
 	if (!cache) return tags;
 
-	const fmTags = cache.frontmatter?.tags ?? cache.frontmatter?.tag;
+	const fmTags: unknown =
+		cache.frontmatter?.tags ?? cache.frontmatter?.tag;
 	if (Array.isArray(fmTags)) {
 		for (const t of fmTags) tags.add(normalizeTag(String(t)));
 	} else if (typeof fmTags === "string") {

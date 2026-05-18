@@ -20,6 +20,7 @@ import {
 	computeQuantileBuckets,
 } from "./colorUtils";
 import { renderDetailPanel } from "./detailPanel";
+import { computeCarryOverStreak } from "./streaks";
 import { computeGridStart, toISODate } from "./dateUtils";
 import { attachElasticScroll } from "./elasticScroll";
 import { burstConfetti } from "./confetti";
@@ -475,6 +476,10 @@ export class VaultPulseView extends ItemView {
 		const selectedStreak = this.selectedIso
 			? this.computeStreakEndingAt(this.selectedIso)
 			: { count: 0, isos: [], startIso: null };
+		// Yesterday's still-warm streak, surfaced only when today is empty.
+		// Drives the desaturated chip + today-cell tint + status-bar fallback.
+		const carryOver = computeCarryOverStreak(this.allActivity, todayIso);
+		this.updateTodayCellPending(carryOver);
 
 		void this.maintainLongestStreak(selectedStreak.count);
 
@@ -491,6 +496,7 @@ export class VaultPulseView extends ItemView {
 			isToday: this.selectedIso === todayIso,
 			showStreakCounter: this.plugin.settings.showStreakCounter,
 			showMiniStats: this.plugin.settings.showMiniStats,
+			carryOver,
 			onOpen: (file: TFile) => {
 				void this.app.workspace.openLinkText(file.path, "", false);
 			},
@@ -635,6 +641,23 @@ export class VaultPulseView extends ItemView {
 	private computeTodayStreak(): StreakWalk {
 		const todayIso = toISODate(DateTime.local().startOf("day"));
 		return this.computeStreakEndingAt(todayIso);
+	}
+
+	/**
+	 * Mark / unmark today's grid cell with `data-streak-pending="1"` so the
+	 * CSS rule tints its outline yellow when yesterday's run is still alive
+	 * but unaddressed today. Cheap to call on every renderSelection — it's a
+	 * single querySelector + attribute toggle, no rebuild.
+	 */
+	private updateTodayCellPending(carryOver: { count: number } | null): void {
+		const todayIso = toISODate(DateTime.local().startOf("day"));
+		const cell = this.gridEl.querySelector<HTMLElement>(
+			`.vault-pulse-cell[data-date="${todayIso}"]`
+		);
+		if (!cell) return;
+		const shouldMark = carryOver !== null && carryOver.count >= 2;
+		if (shouldMark) cell.dataset.streakPending = "1";
+		else delete cell.dataset.streakPending;
 	}
 
 	private computeStreakEndingAt(iso: string): StreakWalk {

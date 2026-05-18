@@ -1,8 +1,8 @@
 {
 	"id": "vault-pulse",
 	"name": "Vault Pulse",
-	"version": "0.3.2",
-	"minAppVersion": "1.5.0",
+	"version": "0.3.3",
+	"minAppVersion": "1.7.2",
 	"description": "A GitHub-style activity heatmap of your vault's file activity across the last 365 days.",
 	"author": "Stefmf",
 	"authorUrl": "https://github.com/stefmf",

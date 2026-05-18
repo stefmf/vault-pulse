@@ -14,6 +14,7 @@
 		"files_other": "{count} files",
 		"streak": "{days}-day streak",
 		"streakAria": "{days}-day streak",
+		"streakAriaPending": "{days}-day streak, today is empty",
 		"streakBest": "· best {days}",
 		"statsWeek": "week",
 		"statsMonth": "month",

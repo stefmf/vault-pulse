@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-18
+
+Clears the new Community Portal's automated review. The 0.3.2 submission was auto-migrated to the new review system and flagged with two errors plus a stack of popout-window / DOM-helper / dependency warnings; this release addresses every item the bot called out and adds signed artifact attestations.
+
+### Changed
+
+- **`minAppVersion` raised to `1.7.2`.** `Workspace.revealLeaf` (used by `activateView`) became awaitable in 1.7.2 and was rightly flagged against the previous `1.5.0` floor.
+- **Popout-window safety.** All `document.X` reads and `document.createElement(...)` writes in `renderer.ts`, `detailPanel.ts`, `confetti.ts`, and `colorUtils.ts` now route through Obsidian's element-context helpers (`containerEl.createDiv`, `createSpan`, `createEl`, `createFragment`) or through the `activeDocument` global, so DOM operations land in the same window as the host element.
+- **Sparkline bar height routes through a CSS variable.** Per-bar height is now set via `el.style.setProperty('--vp-bar-height', …)` and resolved by a `.vault-pulse-sparkline-bar` rule in `styles.css`. The change satisfies the new `no-static-styles-assignment` rule's preference for class-driven theming while preserving dynamic height per data point.
+- **`builtin-modules` replaced with `node:module` `builtinModules`.** Stdlib equivalent recommended by the [module-replacements](https://github.com/es-tooling/module-replacements/blob/main/docs/modules/builtin-modules.md) registry; drops a devDependency.
+- **Confetti pieces use `style.setProperty` for their CSS variables.** Removed the `setCssProps({…})` call now that every value is a custom property — keeps the rule happy without changing observable behavior.
+
+### Added
+
+- **Carry-over streak indicator.** When today has no activity yet AND yesterday was the tail of a multi-day streak, the streak signals "paused" through a quiet visual state across three surfaces: the detail panel chip's flame icon shifts to `--color-yellow` (≥ 2 days), the today cell's outline tints yellow (≥ 2 days), and the status bar flame goes yellow (≥ 7 days, matching the existing live-flame threshold). Text and number stay identical to the active state — only the color changes, Snapchat-style. The "No activity this day" placeholder below the chip combines with the yellow flame to communicate state, no warning copy needed. Screen-reader `aria-label` adds "today is empty" so non-sighted users get the same signal. The moment activity lands today, the orange flame returns. New pure function `computeCarryOverStreak(allActivity, todayIso)` in `src/streaks.ts` powers all three surfaces.
+- **GitHub artifact attestations for release assets.** `.github/workflows/release.yml` now wires `actions/attest-build-provenance@v2` and the required `id-token: write` / `attestations: write` permissions. `main.js`, `manifest.json`, and `styles.css` ship with verifiable Sigstore-signed provenance — users can confirm with `gh attestation verify main.js --repo stefmf/vault-pulse`.
+- **DOM smoke tests.** `tests/renderer.dom.test.ts`, `tests/detailPanel.dom.test.ts`, `tests/confetti.dom.test.ts`, and `tests/streaks.test.ts` exercise every rendering function and the new carry-over computation under jsdom. The `obsidian` test mock now installs the same `createDiv` / `createSpan` / `createEl` / `createFragment` / `empty` / `addClass` / `setCssProps` helpers Obsidian patches at runtime, so test coverage matches production behavior.
+- **`--end-offset=N` for `npm run seed`.** Lets the local seed script build a "streak that ended N days ago" scenario for testing the carry-over UI without waiting for a real midnight rollover.
+
+### Fixed
+
+- **Implicit-`any` in tag extraction.** `data.ts` now annotates the frontmatter-tag lookup as `unknown` so the downstream `Array.isArray` / `typeof` guards do the narrowing, instead of leaking `any` through the Obsidian type definitions.
+
 ## [0.3.2] - 2026-04-15
 
 ### Changed

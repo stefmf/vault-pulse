@@ -53,13 +53,13 @@ export function burstConfetti(
 	const baseDuration = grand ? 1200 : 900;
 	const durationRange = grand ? 700 : 500;
 
-	const layer = document.createElement("div");
-	layer.className = "vault-pulse-confetti-layer";
-	host.appendChild(layer);
+	const layer = host.createDiv({ cls: "vault-pulse-confetti-layer" });
 
 	for (let i = 0; i < count; i++) {
-		const piece = document.createElement("span");
-		piece.className = "vault-pulse-confetti-piece";
+		const piece = layer.createSpan({ cls: "vault-pulse-confetti-piece" });
+		// All CSS variables — setCssProps with custom-props is permitted by
+		// the no-static-styles-assignment rule. Real properties would be
+		// flagged; we have none here.
 		piece.setCssProps({
 			"--vp-angle": `${Math.random() * 360}deg`,
 			"--vp-distance": `${baseDistance + Math.random() * distanceRange}px`,
@@ -67,7 +67,6 @@ export function burstConfetti(
 			"--vp-spin": `${Math.random() * 720 - 360}deg`,
 			"--vp-color": palette[i % palette.length],
 		});
-		layer.appendChild(piece);
 	}
 
 	window.setTimeout(() => layer.remove(), grand ? 2200 : 1600);

@@ -20,6 +20,7 @@ Obsidian community plugin. GitHub-style activity heatmap rendered in a sidebar `
 | `src/renderer.ts` | Pure DOM build: CSS grid of heatmap cells, month/day labels, legend, sparkline, window pager controls. **`updateHeatmapCells` + `updateSparklineBars`** apply attribute-only diffs to existing nodes when the date structure is unchanged — used by `view.doRender()` instead of empty + rebuild for data-only changes. |
 | `src/detailPanel.ts` | Header (date + file count + streak icons + mini stats + Today button), file list, trophy anniversaries menu. |
 | `src/streakSymbols.ts` | Pure ladder: streak days → flame + trophy counts. |
+| `src/streaks.ts` | `computeCarryOverStreak` — yesterday's still-warm streak, fires only when today is empty and yesterday capped a ≥2-day run. Drives the muted-yellow chip / today-cell tint / status-bar flame so users see their previous streak before it falls out of the live counter. |
 | `src/confetti.ts` | One-shot CSS-driven particle burst for tier crossings; `{ grand: true }` bumps piece count + gold palette for year-trophy moments. |
 | `src/dateUtils.ts` | Luxon date math: window grid start, week/col indices, month label spans. |
 | `src/colorUtils.ts` | Quantile bucketing (p25/p50/p75), theme-aware color ramp. |
@@ -40,7 +41,7 @@ Obsidian community plugin. GitHub-style activity heatmap rendered in a sidebar `
 - **Quantile buckets only** — never hardcoded count thresholds like `count > 5 → level 4`.
 - **CSS grid of `<div>` cells** — never inline SVG. Icons go through `setIcon` (lucide).
 - **All user-facing text routes through `t()`** — never inline English strings in view/settings code.
-- **Safe DOM writes only** — `textContent` / `setCssProps` / `addClass` / `removeClass`. No `innerHTML`, no direct `.style.x = "literal"` assignments (dynamic grid positions are the only exception, scoped to `renderer.ts`).
+- **Safe DOM writes only** — `containerEl.createDiv` / `createSpan` / `createEl` for element creation (popout-window safe, inherits parent's window context). `textContent` / `addClass` / `removeClass` for mutation. Dynamic styles route through CSS variables via `el.style.setProperty('--name', value)` resolved by a class rule in `styles.css` — direct `.style.x` and `setCssProps({ realProp: … })` are flagged by `no-static-styles-assignment`. `innerHTML` is forbidden. Reads off `document` use `activeDocument` instead.
 - **No `backdrop-filter`** on persistent surfaces — it forces a compositor layer that bleeds across panes. Use `color-mix(...)` for translucency.
 - **Sentence case** for every UI string — enforced by `npm run lint:obsidian`.
 - **Obsidian handles view teardown** — do not call `detachLeavesOfType` in `onunload`.

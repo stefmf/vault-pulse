@@ -12,6 +12,10 @@
  *   npm run seed -- --streak=30 --per-day=1-4   # 1..4 notes per day (range)
  *   npm run seed -- --streak=15 --tags=project,journal
  *   npm run seed -- --streak=10 --in-folder=Archive
+ *   npm run seed -- --streak=10 --end-offset=1  # streak ENDS yesterday — today
+ *                                               #   is empty, triggers the
+ *                                               #   carry-over chip + yellow
+ *                                               #   flame + tinted today cell
  *
  * Always (re-)installs main.js / manifest.json / styles.css into the test
  * vault's plugins/vault-pulse dir. Run `npm run build` first.
@@ -188,7 +192,7 @@ Seeded note used to exercise Vault Pulse during local development.
 }
 
 function seedDeterministic(options) {
-	const { streak, pre, perDayFn, tags, folder } = options;
+	const { streak, pre, perDayFn, tags, folder, endOffset } = options;
 	const today = new Date();
 	today.setHours(0, 0, 0, 0);
 
@@ -197,29 +201,31 @@ function seedDeterministic(options) {
 
 	let noteIdx = 0;
 
-	// Streak: the most recent `streak` days, including today.
+	// Streak ends `endOffset` days before today. endOffset=0 → ends today.
+	// endOffset=1 → ends yesterday, today is empty (carry-over scenario).
 	for (let offset = streak - 1; offset >= 0; offset--) {
 		const d = new Date(today);
-		d.setDate(today.getDate() - offset);
+		d.setDate(today.getDate() - offset - endOffset);
 		const n = perDayFn();
 		for (let k = 0; k < n; k++) {
 			writeNoteOnDate(targetDir, d, noteIdx++, tags);
 		}
 	}
 
-	// Pre-streak activity, if requested. Starts `streak + 2` days ago to
-	// guarantee a 1-day gap between the two runs.
+	// Pre-streak activity, if requested. Starts `streak + 2` days BEFORE the
+	// streak's earliest day to guarantee a 1-day gap between the two runs.
 	for (let offset = 0; offset < pre; offset++) {
 		const d = new Date(today);
-		d.setDate(today.getDate() - (streak + 2 + offset));
+		d.setDate(today.getDate() - (streak + 2 + offset + endOffset));
 		const n = perDayFn();
 		for (let k = 0; k < n; k++) {
 			writeNoteOnDate(targetDir, d, noteIdx++, tags);
 		}
 	}
 
+	const suffix = endOffset > 0 ? `, ends ${endOffset} day(s) ago` : "";
 	console.log(
-		`Seeded ${noteIdx} notes — streak=${streak}${pre > 0 ? `, pre=${pre}` : ""}${folder ? `, folder=${folder}` : ""}${tags.length > 0 ? `, tags=[${tags.join(", ")}]` : ""}.`
+		`Seeded ${noteIdx} notes — streak=${streak}${pre > 0 ? `, pre=${pre}` : ""}${suffix}${folder ? `, folder=${folder}` : ""}${tags.length > 0 ? `, tags=[${tags.join(", ")}]` : ""}.`
 	);
 }
 
@@ -254,6 +260,7 @@ if (streakLen != null && streakLen > 0) {
 		perDayFn: parsePerDay(args["per-day"]),
 		tags: resolveTags(),
 		folder: args["in-folder"] ?? null,
+		endOffset: args["end-offset"] ? parseInt(args["end-offset"], 10) : 0,
 	});
 } else {
 	seedLegacyGaussian();

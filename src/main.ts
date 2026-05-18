@@ -15,6 +15,7 @@ import {
 	type VaultActivity,
 } from "./data";
 import { toISODate } from "./dateUtils";
+import { computeCarryOverStreak } from "./streaks";
 
 export const HOVER_LINK_SOURCE = "vault-pulse";
 
@@ -221,22 +222,29 @@ export default class VaultPulsePlugin extends Plugin {
 		const todayIso = toISODate(DateTime.local().startOf("day"));
 		const todayCount = scan.allActivity.get(todayIso) ?? 0;
 		const streak = computeStreakFromSet(scan.allActivity, todayIso);
+		// Yesterday's run, surfaced only when today is empty AND yesterday was
+		// part of a multi-day run worth signalling. See streaks.ts.
+		const carryOver = computeCarryOverStreak(scan.allActivity, todayIso);
 
 		el.empty();
 
 		// Match the detail panel's flame-tier threshold — no flame in the
 		// status bar until the streak reaches day 7, same as when the first
-		// flame glyph appears in the detail panel header.
-		const showFlame = streak >= 7;
+		// flame glyph appears in the detail panel header. The carry-over
+		// flame inherits the same threshold so we don't suddenly show a flame
+		// for a streak that wouldn't have shown one yesterday either.
+		const carryOverFlame = streak === 0 && carryOver !== null && carryOver.count >= 7;
+		const showFlame = streak >= 7 || carryOverFlame;
 		if (showFlame) {
 			const flame = el.createSpan({
 				cls: "vault-pulse-status-group vault-pulse-status-flame",
 			});
+			if (carryOverFlame) flame.dataset.state = "pending";
 			const flameIcon = flame.createSpan({ cls: "vault-pulse-status-icon" });
 			setIcon(flameIcon, "flame");
 			flame.createSpan({
 				cls: "vault-pulse-status-text",
-				text: String(streak),
+				text: String(carryOverFlame ? carryOver!.count : streak),
 			});
 		}
 
@@ -264,7 +272,9 @@ export default class VaultPulsePlugin extends Plugin {
 			setIcon(icon, "layout-grid");
 		}
 
-		setTooltip(el, buildStatusTooltip(streak, todayCount), { placement: "top" });
+		setTooltip(el, buildStatusTooltip(streak, todayCount, carryOver), {
+			placement: "top",
+		});
 	}
 }
 
@@ -284,11 +294,21 @@ function computeStreakFromSet(
 	return count;
 }
 
-function buildStatusTooltip(streak: number, todayCount: number): string {
+function buildStatusTooltip(
+	streak: number,
+	todayCount: number,
+	carryOver: { count: number } | null
+): string {
 	const parts: string[] = [];
 	if (streak >= 7) parts.push(t("statusBar.streak", { days: streak }));
 	if (todayCount > 0) {
 		parts.push(t("statusBar.todayFiles", { count: todayCount }));
+	}
+	// Carry-over uses the SAME phrasing as the active streak — the yellow flame
+	// icon in the widget itself carries the at-risk meaning. Snapchat-style: no
+	// vocabulary change, visual state only.
+	if (streak === 0 && carryOver && carryOver.count >= 7) {
+		parts.push(t("statusBar.streak", { days: carryOver.count }));
 	}
 	if (parts.length === 0) return t("view.title");
 	return parts.join(" · ");
