@@ -35,7 +35,7 @@ _Three of the built-in palettes, in light and dark themes._ Auto (theme accent) 
 
 ### From the community plugin store
 
-*Coming soon.* Once accepted you'll be able to install from **Settings → Community plugins → Browse → search "Vault Pulse"**.
+Install from **Settings → Community plugins → Browse → search "Vault Pulse"**.
 
 ### Manual install
 
@@ -103,6 +103,21 @@ Additional:
 ### Frontmatter dates
 
 Vault Pulse reads `created` and `updated` from each note's frontmatter when present. Supported formats: ISO 8601 (`2026-04-13`, `2026-04-13T12:34:56`), SQL (`2026-04-13 12:34:56`), JS Date objects, and Unix millisecond epochs. Missing frontmatter falls back to the file's filesystem stat (`ctime` / `mtime`).
+
+## Permissions & data access
+
+Vault Pulse runs entirely on your device. It does not make network requests, send telemetry, or transmit your notes anywhere.
+
+To render the heatmap and detail panel, the plugin reads:
+
+- **All markdown file paths** in your vault via `app.vault.getMarkdownFiles()` — required to discover which days had writing activity.
+- **Each note's frontmatter** (`created`, `updated`, and `tags` / `tag`) via Obsidian's metadata cache — used for accurate date detection and the optional **Include tags** filter.
+- **Each note's inline tags** via the metadata cache — also used for the tag filter.
+- **Filesystem `ctime` / `mtime`** as fallbacks when frontmatter dates are absent.
+
+The plugin does **not** read note bodies. Files inside folders listed under **Exclude folders** are skipped entirely.
+
+All state — settings, lifetime-best streak, recent windows — is stored locally in `<vault>/.obsidian/plugins/vault-pulse/data.json`.
 
 ## How the colors work
 

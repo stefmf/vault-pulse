@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-18
+
+Docs-only release that clears the final two items from the Community Portal's automated review of 0.3.3 (Warning + Recommendation; Health was already Excellent).
+
+### Documentation
+
+- **Replaced the "Coming soon" install placeholder in `README.md`** now that Vault Pulse is listed in the Obsidian Community Portal — clears the portal's "README contains unfilled placeholder text" warning.
+- **Added a `Permissions & data access` section to `README.md`** disclosing the file-path enumeration (`app.vault.getMarkdownFiles()`), the metadata-cache reads (frontmatter `created` / `updated` / `tags`, inline tags), the filesystem stat fallback, and the absence of any network egress — addresses the Community Portal's Vault Enumeration disclosure recommendation.
+
+No code changes in this release.
+
 ## [0.3.3] - 2026-05-18
 
 Clears the new Community Portal's automated review. The 0.3.2 submission was auto-migrated to the new review system and flagged with two errors plus a stack of popout-window / DOM-helper / dependency warnings; this release addresses every item the bot called out and adds signed artifact attestations.
