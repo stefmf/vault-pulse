@@ -40,9 +40,6 @@ export default defineConfig([
 		files: ["src/**/*.ts"],
 		rules: {
 			"obsidianmd/ui/sentence-case": ["error", sentenceCase],
-			// Declarative settings need Obsidian 1.13; below that minAppVersion every
-			// setting would be written twice. Revisit if minAppVersion reaches 1.13.
-			"obsidianmd/settings-tab/prefer-setting-definitions": "off",
 		},
 	},
 	{

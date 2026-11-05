@@ -58,7 +58,7 @@
 		"colorPaletteSunset": "Sunset (gold → indigo)",
 		"colorPaletteCustom": "Custom hex",
 		"customHex": "Custom hex color",
-		"customHexDesc": "Hex color like #39d353. Used when color palette is set to custom.",
+		"customHexDesc": "The base color for the custom palette. Used when color palette is set to custom hex.",
 		"windowLength": "Window length",
 		"windowLengthDesc": "How many days the heatmap spans. Shorter ranges give a narrower grid with finer detail.",
 		"windowLength90": "90 days",

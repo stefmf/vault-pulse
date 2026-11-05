@@ -20,6 +20,7 @@ Adds a month calendar to the pane and marks the settings, command ids, view type
 
 ### Changed
 
+- **`minAppVersion` raised to `1.13.0`.** Settings use Obsidian's declarative settings API, so every Vault Pulse setting now appears in Obsidian's settings search, and Custom hex color is a color picker. Obsidian versions before 1.13 keep getting 0.3.4.
 - The Color palette now colors the calendar too. Auto builds its ramp from the theme accent in CSS, so themes with an `hsl()` accent (including Obsidian's default) no longer fall back to green, and a palette change repaints immediately.
 - The "Open heatmap" command is now named "Open calendar and heatmap" (same command id).
 - Heatmap and sparkline labels, legend and weekday/month names are localized through `src/i18n` and Luxon.

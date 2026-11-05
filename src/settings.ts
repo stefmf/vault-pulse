@@ -1,4 +1,9 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import {
+	App,
+	PluginSettingTab,
+	type SettingDefinition,
+	type SettingDefinitionItem,
+} from "obsidian";
 import type VaultPulsePlugin from "./main";
 import { t } from "./i18n";
 
@@ -64,8 +69,15 @@ export function effectiveVisibility(
 	return { calendar: settings.showCalendar, heatmap: settings.showHeatmap };
 }
 
-const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
+/** Settings stored as numbers but chosen from a dropdown (string values). */
+const NUMERIC_KEYS = new Set<string>(["weekStart", "windowDays"]);
 
+/**
+ * Declarative settings (Obsidian 1.13+), so every setting appears in
+ * Obsidian's settings search. Values go through `getControlValue` /
+ * `setControlValue`, which keep the plugin's side effects (rescan, status
+ * bar) and the "one section always visible" rule.
+ */
 export class VaultPulseSettingTab extends PluginSettingTab {
 	plugin: VaultPulsePlugin;
 
@@ -74,226 +86,166 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+	getControlValue(key: string): unknown {
+		const value = (this.plugin.settings as unknown as Record<string, unknown>)[key];
+		return NUMERIC_KEYS.has(key) ? String(value) : value;
+	}
 
-		new Setting(containerEl)
-			.setName(t("settings.activitySource"))
-			.setDesc(t("settings.activitySourceDesc"))
-			.addDropdown((dd) =>
-				dd
-					.addOption("combined", t("settings.activitySourceCombined"))
-					.addOption("modified", t("settings.activitySourceModified"))
-					.addOption("created", t("settings.activitySourceCreated"))
-					.setValue(this.plugin.settings.activitySource)
-					.onChange(async (value) => {
-						this.plugin.settings.activitySource = value as ActivitySource;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.modifiedDate"))
-			.setDesc(t("settings.modifiedDateDesc"))
-			.addDropdown((dd) =>
-				dd
-					.addOption("updated", t("settings.modifiedDateUpdated"))
-					.addOption("mtime", t("settings.modifiedDateMtime"))
-					.setValue(this.plugin.settings.modifiedDate)
-					.onChange(async (value) => {
-						this.plugin.settings.modifiedDate = value as ModifiedDateSource;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.colorPalette"))
-			.setDesc(t("settings.colorPaletteDesc"))
-			.addDropdown((dd) =>
-				dd
-					.addOption("theme", t("settings.colorPaletteTheme"))
-					.addOption("green", t("settings.colorPaletteGreen"))
-					.addOption("heat", t("settings.colorPaletteHeat"))
-					.addOption("sunset", t("settings.colorPaletteSunset"))
-					.addOption("custom", t("settings.colorPaletteCustom"))
-					.setValue(this.plugin.settings.colorBase)
-					.onChange(async (value) => {
-						this.plugin.settings.colorBase = value as ColorBase;
-						await this.plugin.saveSettings();
-						this.display();
-					})
-			);
-
-		if (this.plugin.settings.colorBase === "custom") {
-			new Setting(containerEl)
-				.setName(t("settings.customHex"))
-				.setDesc(t("settings.customHexDesc"))
-				.addText((text) =>
-					text
-						.setPlaceholder("#39d353")
-						.setValue(this.plugin.settings.customHexColor)
-						.onChange(async (value) => {
-							if (HEX_COLOR_RE.test(value)) {
-								this.plugin.settings.customHexColor = value.startsWith("#")
-									? value
-									: `#${value}`;
-								await this.plugin.saveSettings();
-							}
-						})
-				);
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		const settings = this.plugin.settings as unknown as Record<string, unknown>;
+		if (key === "showCalendar" || key === "showHeatmap") {
+			// Start from what the user sees, so a merged both-off state can't
+			// hide the calendar when the heatmap is switched back on.
+			const visible = effectiveVisibility(this.plugin.settings);
+			this.plugin.settings.showCalendar = visible.calendar;
+			this.plugin.settings.showHeatmap = visible.heatmap;
 		}
+		settings[key] = NUMERIC_KEYS.has(key) ? Number(value) : value;
+		await this.plugin.saveSettings();
+		// Re-evaluate which toggle is disabled and whether Custom hex shows.
+		this.update();
+	}
 
-		new Setting(containerEl)
-			.setName(t("settings.windowLength"))
-			.setDesc(t("settings.windowLengthDesc"))
-			.addDropdown((dd) =>
-				dd
-					.addOption("90", t("settings.windowLength90"))
-					.addOption("180", t("settings.windowLength180"))
-					.addOption("365", t("settings.windowLength365"))
-					.setValue(String(this.plugin.settings.windowDays))
-					.onChange(async (value) => {
-						this.plugin.settings.windowDays = parseInt(
-							value,
-							10
-						) as WindowDays;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.weekStart"))
-			.setDesc(t("settings.weekStartDesc"))
-			.addDropdown((dd) =>
-				dd
-					.addOption("0", t("settings.weekStartSunday"))
-					.addOption("1", t("settings.weekStartMonday"))
-					.setValue(String(this.plugin.settings.weekStart))
-					.onChange(async (value) => {
-						this.plugin.settings.weekStart = parseInt(value, 10) as 0 | 1;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.excludeFolders"))
-			.setDesc(t("settings.excludeFoldersDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder(t("settings.excludeFoldersPlaceholder"))
-					.setValue(this.plugin.settings.excludeFolders)
-					.onChange(async (value) => {
-						this.plugin.settings.excludeFolders = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.includeTags"))
-			.setDesc(t("settings.includeTagsDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder(t("settings.includeTagsPlaceholder"))
-					.setValue(this.plugin.settings.includeTags)
-					.onChange(async (value) => {
-						this.plugin.settings.includeTags = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl).setName(t("settings.visibility")).setHeading();
-
-		// The toggle of the only visible section is disabled, so the pane
-		// never ends up empty. Re-render after a change to update that state.
-		const visible = effectiveVisibility(this.plugin.settings);
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		const settings = this.plugin.settings;
+		const visible = effectiveVisibility(settings);
 		const onlyCalendar = visible.calendar && !visible.heatmap;
 		const onlyHeatmap = visible.heatmap && !visible.calendar;
 
-		new Setting(containerEl)
-			.setName(t("settings.showCalendar"))
-			.setDesc(
-				onlyCalendar ? t("settings.lastSectionDesc") : t("settings.showCalendarDesc")
-			)
-			.setDisabled(onlyCalendar)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(visible.calendar)
-					.setDisabled(onlyCalendar)
-					.onChange(async (value) => {
-						// Start from what the user sees, so a merged both-off
-						// state can't hide the calendar when the heatmap comes back.
-						this.plugin.settings.showCalendar = value;
-						this.plugin.settings.showHeatmap = visible.heatmap;
-						await this.plugin.saveSettings();
-						this.display();
-					})
-			);
+		const general: SettingDefinition[] = [
+			{
+				name: t("settings.activitySource"),
+				desc: t("settings.activitySourceDesc"),
+				control: {
+					type: "dropdown",
+					key: "activitySource",
+					options: {
+						combined: t("settings.activitySourceCombined"),
+						modified: t("settings.activitySourceModified"),
+						created: t("settings.activitySourceCreated"),
+					},
+				},
+			},
+			{
+				name: t("settings.modifiedDate"),
+				desc: t("settings.modifiedDateDesc"),
+				control: {
+					type: "dropdown",
+					key: "modifiedDate",
+					options: {
+						updated: t("settings.modifiedDateUpdated"),
+						mtime: t("settings.modifiedDateMtime"),
+					},
+				},
+			},
+			{
+				name: t("settings.colorPalette"),
+				desc: t("settings.colorPaletteDesc"),
+				control: {
+					type: "dropdown",
+					key: "colorBase",
+					options: {
+						theme: t("settings.colorPaletteTheme"),
+						green: t("settings.colorPaletteGreen"),
+						heat: t("settings.colorPaletteHeat"),
+						sunset: t("settings.colorPaletteSunset"),
+						custom: t("settings.colorPaletteCustom"),
+					},
+				},
+			},
+			{
+				name: t("settings.customHex"),
+				desc: t("settings.customHexDesc"),
+				visible: () => this.plugin.settings.colorBase === "custom",
+				control: { type: "color", key: "customHexColor" },
+			},
+			{
+				name: t("settings.windowLength"),
+				desc: t("settings.windowLengthDesc"),
+				control: {
+					type: "dropdown",
+					key: "windowDays",
+					options: {
+						"90": t("settings.windowLength90"),
+						"180": t("settings.windowLength180"),
+						"365": t("settings.windowLength365"),
+					},
+				},
+			},
+			{
+				name: t("settings.weekStart"),
+				desc: t("settings.weekStartDesc"),
+				control: {
+					type: "dropdown",
+					key: "weekStart",
+					options: {
+						"0": t("settings.weekStartSunday"),
+						"1": t("settings.weekStartMonday"),
+					},
+				},
+			},
+			{
+				name: t("settings.excludeFolders"),
+				desc: t("settings.excludeFoldersDesc"),
+				control: {
+					type: "text",
+					key: "excludeFolders",
+					placeholder: t("settings.excludeFoldersPlaceholder"),
+				},
+			},
+			{
+				name: t("settings.includeTags"),
+				desc: t("settings.includeTagsDesc"),
+				control: {
+					type: "text",
+					key: "includeTags",
+					placeholder: t("settings.includeTagsPlaceholder"),
+				},
+			},
+		];
 
-		new Setting(containerEl)
-			.setName(t("settings.showHeatmap"))
-			.setDesc(
-				onlyHeatmap ? t("settings.lastSectionDesc") : t("settings.showHeatmapDesc")
-			)
-			.setDisabled(onlyHeatmap)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(visible.heatmap)
-					.setDisabled(onlyHeatmap)
-					.onChange(async (value) => {
-						this.plugin.settings.showHeatmap = value;
-						this.plugin.settings.showCalendar = visible.calendar;
-						await this.plugin.saveSettings();
-						this.display();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.showSparkline"))
-			.setDesc(t("settings.showSparklineDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showSparkline)
-					.onChange(async (value) => {
-						this.plugin.settings.showSparkline = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.showStreakCounter"))
-			.setDesc(t("settings.showStreakCounterDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showStreakCounter)
-					.onChange(async (value) => {
-						this.plugin.settings.showStreakCounter = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.showMiniStats"))
-			.setDesc(t("settings.showMiniStatsDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showMiniStats)
-					.onChange(async (value) => {
-						this.plugin.settings.showMiniStats = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t("settings.showStatusBar"))
-			.setDesc(t("settings.showStatusBarDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showStatusBar)
-					.onChange(async (value) => {
-						this.plugin.settings.showStatusBar = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		return [
+			...general,
+			{
+				type: "group",
+				heading: t("settings.visibility"),
+				items: [
+					{
+						name: t("settings.showCalendar"),
+						desc: onlyCalendar
+							? t("settings.lastSectionDesc")
+							: t("settings.showCalendarDesc"),
+						control: { type: "toggle", key: "showCalendar", disabled: onlyCalendar },
+					},
+					{
+						name: t("settings.showHeatmap"),
+						desc: onlyHeatmap
+							? t("settings.lastSectionDesc")
+							: t("settings.showHeatmapDesc"),
+						control: { type: "toggle", key: "showHeatmap", disabled: onlyHeatmap },
+					},
+					{
+						name: t("settings.showSparkline"),
+						desc: t("settings.showSparklineDesc"),
+						control: { type: "toggle", key: "showSparkline" },
+					},
+					{
+						name: t("settings.showStreakCounter"),
+						desc: t("settings.showStreakCounterDesc"),
+						control: { type: "toggle", key: "showStreakCounter" },
+					},
+					{
+						name: t("settings.showMiniStats"),
+						desc: t("settings.showMiniStatsDesc"),
+						control: { type: "toggle", key: "showMiniStats" },
+					},
+					{
+						name: t("settings.showStatusBar"),
+						desc: t("settings.showStatusBarDesc"),
+						control: { type: "toggle", key: "showStatusBar" },
+					},
+				],
+			},
+		];
 	}
 }

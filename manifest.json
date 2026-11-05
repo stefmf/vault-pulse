@@ -2,7 +2,7 @@
 	"id": "vault-pulse",
 	"name": "Vault Pulse",
 	"version": "1.0.0",
-	"minAppVersion": "1.7.2",
+	"minAppVersion": "1.13.0",
 	"description": "Show a month calendar and a GitHub-style heatmap of the notes you created and modified each day, from frontmatter dates or file times.",
 	"author": "Stefmf",
 	"authorUrl": "https://github.com/stefmf",
