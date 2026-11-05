@@ -298,7 +298,7 @@ export class VaultPulseView extends ItemView {
 				);
 			}
 
-			requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
 				this.gridEl.scrollLeft = this.gridEl.scrollWidth;
 			});
 		}
@@ -356,7 +356,7 @@ export class VaultPulseView extends ItemView {
 
 		this.renderSelection();
 		this.lastRenderKey = this.computeRenderKey();
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			this.gridEl.scrollLeft = this.gridEl.scrollWidth;
 			const cell = this.gridEl.querySelector<HTMLElement>(
 				`.vault-pulse-cell[data-date="${this.selectedIso}"]`

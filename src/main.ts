@@ -244,7 +244,7 @@ export default class VaultPulsePlugin extends Plugin {
 			setIcon(flameIcon, "flame");
 			flame.createSpan({
 				cls: "vault-pulse-status-text",
-				text: String(carryOverFlame ? carryOver!.count : streak),
+				text: String(carryOverFlame ? carryOver.count : streak),
 			});
 		}
 
