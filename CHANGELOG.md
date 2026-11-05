@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Month calendar** above the heatmap. Each day shows a dot per note created that day and per note last modified that day (up to three of each). The created date comes from `created:` frontmatter, falling back to the file's creation time, so a note rewritten by an editor stays on the day it was made. Clicking a day never creates a note.
+- **One selected day for both views.** Picking a day in the calendar, the heatmap or the sparkline selects it in both: the calendar turns to its month, and the heatmap pages back only when the day is off its grid. Arrow keys move through the calendar.
+- **Created and Modified groups** in the day list. ⌘/Ctrl-click opens a note in a new tab.
+- **Settings:** Modified date (`updated:` then file time, the default and previous behaviour, or file time only), Show calendar and Show heatmap (one always stays on).
+- **Style Settings** entries for the calendar's created and modified dot colors.
+
+### Changed
+
+- The Color palette now colors the calendar too. Auto builds its ramp from the theme accent in CSS, so themes with an `hsl()` accent (including Obsidian's default) no longer fall back to green, and a palette change repaints immediately.
+- The "Open heatmap" command is now named "Open calendar and heatmap" (same command id).
+- Heatmap and sparkline labels, legend and weekday/month names are localized through `src/i18n` and Luxon.
+- Excluded folder paths are normalized, so `Archive/` and `/Archive` match like `Archive`.
+- Lint moved to eslint-plugin-obsidianmd 0.5.0's recommended set (the community directory's rules) with zero warnings, in CI and in the release workflow, which also checks the tag matches `manifest.json`.
+
+### Fixed
+
+- Heatmap and calendar clicks, hover and arrow keys work when the pane is in a pop-out window.
+- A burst of file events (a git pull) triggers one scan after it settles instead of one every 200 ms.
+- Settings synced from another device apply on a running device (`onExternalSettingsChange`).
+- "Today" moves at midnight without waiting for a file event.
+- The flame and trophy Style Settings colors take effect.
+- The selected day keeps the palette's look under themes that restyle `.is-selected` (Dracula Official).
+- A paged heatmap no longer scans the vault twice per refresh, and no longer paints a stale window after a filter change.
+- The hover-preview source is unregistered when the plugin unloads.
+
 ## [0.3.4] - 2026-05-18
 
 Docs-only release that clears the final two items from the Community Portal's automated review of 0.3.3 (Warning + Recommendation; Health was already Excellent).

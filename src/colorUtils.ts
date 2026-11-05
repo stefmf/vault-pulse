@@ -1,5 +1,5 @@
 import type { ActivityMap, ActivityLevel, ColorRamp, QuantileBuckets } from "./types";
-import type { ColorBase, VaultPulseSettings } from "./settings";
+import type { VaultPulseSettings } from "./settings";
 
 const GITHUB_GREEN = "#39d353";
 
@@ -141,6 +141,8 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 			level3: palette[2],
 			level4: palette[3],
 			onLevel4: readableTextOn(parseColor(palette[3])),
+			accentTextLight: palette[3],
+			accentTextDark: lightenForDark(parseColor(palette[3])),
 		};
 	}
 
@@ -154,6 +156,8 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 			level3: mix(75),
 			level4: "var(--interactive-accent)",
 			onLevel4: "var(--text-on-accent)",
+			accentTextLight: "var(--interactive-accent)",
+			accentTextDark: "var(--interactive-accent)",
 		};
 	}
 
@@ -167,7 +171,20 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 		level3: rgba(0.75),
 		level4: rgba(1),
 		onLevel4: readableTextOn(base),
+		accentTextLight: rgba(1),
+		accentTextDark: lightenForDark(base),
 	};
+}
+
+/**
+ * The same hue mixed 45% toward white: a palette's strongest stop is too
+ * dark to read as text on a dark pane, and a lighter stop of a hue-crossing
+ * palette (sunset) would no longer match the selected day's fill.
+ */
+export function lightenForDark({ r, g, b }: RGB): string {
+	const mix = (c: number) => Math.round(c * 0.55 + 255 * 0.45);
+	const hex = (c: number) => mix(c).toString(16).padStart(2, "0");
+	return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
 /** Black or white, whichever reads better on the given color (WCAG luminance). */
@@ -186,9 +203,6 @@ function normalizeHex(hex: string): string {
 	return hex.startsWith("#") ? hex : `#${hex}`;
 }
 
-export function isNamedPalette(name: ColorBase): boolean {
-	return name in DISCRETE_PALETTES;
-}
 
 export function applyRampToContainer(container: HTMLElement, ramp: ColorRamp): void {
 	container.style.setProperty("--vp-level-0", ramp.level0);
@@ -197,4 +211,6 @@ export function applyRampToContainer(container: HTMLElement, ramp: ColorRamp): v
 	container.style.setProperty("--vp-level-3", ramp.level3);
 	container.style.setProperty("--vp-level-4", ramp.level4);
 	container.style.setProperty("--vp-on-level-4", ramp.onLevel4);
+	container.style.setProperty("--vp-accent-text-light", ramp.accentTextLight);
+	container.style.setProperty("--vp-accent-text-dark", ramp.accentTextDark);
 }

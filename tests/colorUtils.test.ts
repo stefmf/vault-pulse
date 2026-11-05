@@ -4,7 +4,6 @@ import {
 	applyRampToContainer,
 	computeColorRamp,
 	computeQuantileBuckets,
-	isNamedPalette,
 	levelForCount,
 	parseColor,
 	quantile,
@@ -116,18 +115,6 @@ describe("parseColor", () => {
 	});
 });
 
-describe("isNamedPalette", () => {
-	it("recognizes built-in palettes", () => {
-		expect(isNamedPalette("green")).toBe(true);
-		expect(isNamedPalette("heat")).toBe(true);
-		expect(isNamedPalette("sunset")).toBe(true);
-	});
-
-	it("rejects alpha-blend modes", () => {
-		expect(isNamedPalette("theme")).toBe(false);
-		expect(isNamedPalette("custom")).toBe(false);
-	});
-});
 
 describe("DISCRETE_PALETTES", () => {
 	it("each named palette has exactly 4 levels", () => {
@@ -186,6 +173,35 @@ describe("computeColorRamp", () => {
 		expect(ramp.level3).toBe("color-mix(in srgb, var(--interactive-accent) 75%, transparent)");
 		expect(ramp.level4).toBe("var(--interactive-accent)");
 		expect(ramp.onLevel4).toBe("var(--text-on-accent)");
+		expect(ramp.accentTextLight).toBe("var(--interactive-accent)");
+		expect(ramp.accentTextDark).toBe("var(--interactive-accent)");
+	});
+
+	it("uses the strongest stop for light-theme accent text and the same hue lightened for dark", () => {
+		const ramp = computeColorRamp(makeSettings({ colorBase: "sunset" }));
+		expect(ramp.accentTextLight).toBe("#4338ca");
+		expect(ramp.accentTextDark).toBe("#9892e2");
+	});
+
+	it("keeps accent text at 4.5:1 or better on Obsidian's default panes", () => {
+		// Contrast of a hex text color against a hex background (WCAG).
+		const lum = (hex: string) => {
+			const { r, g, b } = parseColor(hex);
+			const ch = (c: number) => {
+				const s = c / 255;
+				return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+			};
+			return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+		};
+		const contrast = (a: string, b: string) => {
+			const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+			return (hi + 0.05) / (lo + 0.05);
+		};
+		for (const name of ["green", "heat", "sunset"] as const) {
+			const ramp = computeColorRamp(makeSettings({ colorBase: name }));
+			expect(contrast(ramp.accentTextLight, "#f6f6f6")).toBeGreaterThanOrEqual(4.5);
+			expect(contrast(ramp.accentTextDark, "#262626")).toBeGreaterThanOrEqual(4.5);
+		}
 	});
 
 	it("picks readable text for the calendar's selected day on each palette", () => {

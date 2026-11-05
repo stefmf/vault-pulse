@@ -7,10 +7,9 @@ export interface StreakSymbols {
  * Translate a streak length (in days) into the flame + trophy counts shown in
  * the detail-panel header.
  *
- * The plugin only loads activity within the configured window (max 365 days),
- * so the ladder deliberately caps at one trophy — any streak of 365+ days
- * earns the trophy, but multi-year accumulation isn't observable from the
- * visible data. That keeps the display bounded at `🔥🔥🔥 🏆` forever.
+ * The ladder deliberately caps at one trophy: any streak of 365+ days earns
+ * it, and longer runs don't add more, so the display stays bounded at
+ * `🔥🔥🔥 🏆`. (Streaks are counted over all activity, not just the window.)
  */
 export function computeStreakSymbols(days: number): StreakSymbols {
 	if (days < 7) return { flames: 0, trophies: 0 };

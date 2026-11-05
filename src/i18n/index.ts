@@ -1,3 +1,4 @@
+import { moment } from "obsidian";
 import en from "./en.json";
 
 type LocaleBundle = typeof en;
@@ -7,13 +8,12 @@ const LOCALES: Record<string, LocaleBundle> = { en };
 
 const DEFAULT_LOCALE = "en";
 
-interface MomentGlobal {
-	moment?: { locale?: () => string };
-}
-
+/**
+ * Obsidian's UI language, through the moment instance Obsidian bundles and
+ * sets to that language. (`getLanguage()` would need minAppVersion 1.8.7.)
+ */
 function getLocale(): string {
-	const m = (window as unknown as MomentGlobal).moment;
-	const raw = m?.locale?.() ?? DEFAULT_LOCALE;
+	const raw = moment.locale() || DEFAULT_LOCALE;
 	return raw.split("-")[0];
 }
 

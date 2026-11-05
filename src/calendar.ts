@@ -1,7 +1,8 @@
-import { DateTime, Info } from "luxon";
+import { DateTime } from "luxon";
 import { setIcon } from "obsidian";
 import { calendarDays } from "./calendarGrid";
 import type { DayNotes } from "./data";
+import { weekdayNames } from "./dateUtils";
 import { currentLocale, t } from "./i18n";
 
 /** Dots drawn per kind (created, modified) under a day number. */
@@ -45,7 +46,7 @@ export function renderCalendar(options: CalendarOptions): void {
 	buildArrow(arrows, "next", "chevron-right", t("calendar.nextMonth"));
 
 	const grid = container.createDiv({ cls: "vault-pulse-calendar-grid" });
-	for (const name of weekdayNames(weekStart, locale)) {
+	for (const name of weekdayNames(weekStart)) {
 		grid.createDiv({ cls: "vault-pulse-calendar-weekday", text: name });
 	}
 
@@ -66,7 +67,7 @@ export function renderCalendar(options: CalendarOptions): void {
 }
 
 /**
- * Refresh dots, the today and selected classes, and labels on the cells
+ * Refresh dots, today, the selected day and labels on the cells
  * `renderCalendar` built. Used when the shown month and week start are
  * unchanged, so a data change or a new selection never rebuilds the grid.
  */
@@ -96,6 +97,11 @@ export function updateCalendarCells(options: CalendarOptions): void {
 		// Selection is an ARIA state, not an `.is-selected` class: some themes
 		// (Dracula Official) restyle every `.is-selected` with !important.
 		cell.setAttribute("aria-pressed", String(iso === selectedIso));
+
+		// Label and dots depend only on the counts, so skip unchanged cells.
+		const key = `${created}|${modified}`;
+		if (cell.dataset.dots === key) return;
+		cell.dataset.dots = key;
 		cell.setAttribute(
 			"aria-label",
 			t("calendar.dayAria", {
@@ -104,10 +110,6 @@ export function updateCalendarCells(options: CalendarOptions): void {
 				modified,
 			})
 		);
-
-		const key = `${created}|${modified}`;
-		if (cell.dataset.dots === key) return;
-		cell.dataset.dots = key;
 		const dots = cell.querySelector<HTMLElement>(".vault-pulse-calendar-dots");
 		if (!dots) return;
 		dots.empty();
@@ -140,9 +142,3 @@ function buildArrow(
 	setIcon(btn, icon);
 }
 
-/** Short weekday names in display order. Luxon lists Monday first. */
-function weekdayNames(weekStart: 0 | 1, locale: string): string[] {
-	const mondayFirst = Info.weekdays("short", { locale });
-	if (weekStart === 1) return mondayFirst;
-	return [mondayFirst[6], ...mondayFirst.slice(0, 6)];
-}

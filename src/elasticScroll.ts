@@ -83,7 +83,7 @@ export function attachElasticScroll(
 		applyTransform(y);
 
 		if (Math.abs(y) > SETTLE_Y || Math.abs(v) > SETTLE_V) {
-			rafId = window.requestAnimationFrame(step);
+			rafId = scroller.win.requestAnimationFrame(step);
 		} else {
 			inner.removeClass("vault-pulse-elastic-active");
 			inner.setCssProps({ "--vp-elastic-transform": "" });
@@ -99,7 +99,8 @@ export function attachElasticScroll(
 		v = initialVelocity;
 		lastFrame = performance.now();
 		inner.addClass("vault-pulse-elastic-active");
-		rafId = window.requestAnimationFrame(step);
+		// The scroller's own window, so a pane in a pop-out animates there.
+		rafId = scroller.win.requestAnimationFrame(step);
 	};
 
 	const onWheel = (evt: WheelEvent) => {
@@ -152,7 +153,7 @@ export function attachElasticScroll(
 
 	return () => {
 		scroller.removeEventListener("wheel", onWheel);
-		if (rafId !== null) window.cancelAnimationFrame(rafId);
+		if (rafId !== null) scroller.win.cancelAnimationFrame(rafId);
 		if (releaseTimer !== null) window.clearTimeout(releaseTimer);
 		inner.removeClass("vault-pulse-elastic-active");
 		inner.setCssProps({ "--vp-elastic-transform": "" });

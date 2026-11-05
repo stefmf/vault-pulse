@@ -24,7 +24,7 @@ import {
 	computeQuantileBuckets,
 } from "./colorUtils";
 import { renderDetailPanel } from "./detailPanel";
-import { computeCarryOverStreak } from "./streaks";
+import { computeCarryOverStreak, streakEndingAt } from "./streaks";
 import { computeGridStart, toISODate } from "./dateUtils";
 import { attachElasticScroll } from "./elasticScroll";
 import { burstConfetti } from "./confetti";
@@ -33,6 +33,23 @@ import { t } from "./i18n";
 import type { ActivityMap, QuantileBuckets } from "./types";
 
 export const VIEW_TYPE_VAULT_PULSE = "vault-pulse-view";
+
+/** Calendar arrow keys: days to move the selection. */
+const CALENDAR_ARROW_DAYS: Record<string, number> = {
+	ArrowLeft: -1,
+	ArrowRight: 1,
+	ArrowUp: -7,
+	ArrowDown: 7,
+};
+
+/**
+ * The event target as an Element, checked with Obsidian's cross-window
+ * `instanceOf` so it also works when the pane is in a pop-out window.
+ */
+function elementFrom(target: EventTarget | null): Element | null {
+	const node = target as Node | null;
+	return node?.instanceOf(Element) ? node : null;
+}
 
 interface StreakWalk {
 	count: number;
@@ -94,21 +111,9 @@ export class VaultPulseView extends ItemView {
 		this.legendEl = this.contentEl.createDiv("vault-pulse-legend");
 		this.detailEl = this.contentEl.createDiv("vault-pulse-detail");
 
-		// css-change is the only event the view subscribes to directly. Theme
-		// swaps don't change the data — they change the CSS color ramp — so
-		// we just re-apply the ramp; CSS variables propagate without any DOM
-		// rebuild. Vault / metadata events all flow through the plugin via
-		// `onDataChanged()`.
-		this.registerEvent(
-			this.app.workspace.on("css-change", () => {
-				if (!this.containerEl.isShown()) return;
-				applyRampToContainer(
-					this.contentEl,
-					computeColorRamp(this.plugin.settings)
-				);
-			})
-		);
-
+		// The view subscribes to no vault or workspace events: data arrives
+		// through `onDataChanged()` from the plugin, and theme changes reach
+		// the palette through CSS variables (see colorUtils.computeColorRamp).
 		this.registerDomEvent(this.detailEl, "scroll", () => {
 			this.detailEl.classList.toggle(
 				"is-scrolled",
@@ -122,9 +127,15 @@ export class VaultPulseView extends ItemView {
 			this.onCalendarActivate(evt.target);
 		});
 		this.registerDomEvent(this.calendarEl, "keydown", (evt) => {
-			if (evt.key !== "Enter" && evt.key !== " ") return;
+			if (evt.key === "Enter" || evt.key === " ") {
+				evt.preventDefault();
+				this.onCalendarActivate(evt.target);
+				return;
+			}
+			const step = CALENDAR_ARROW_DAYS[evt.key];
+			if (step === undefined) return;
 			evt.preventDefault();
-			this.onCalendarActivate(evt.target);
+			this.moveCalendarFocus(evt.target, step);
 		});
 
 		// Bootstrap with the plugin's already-cached scan (or a fresh one if
@@ -134,29 +145,31 @@ export class VaultPulseView extends ItemView {
 	}
 
 	/**
-	 * Re-render with a scan tailored to current view state. Called by
-	 * `scrollToToday`, `stepPager`, `onOpen` — whenever the view itself needs
-	 * fresh data outside the plugin's event-driven flow. Vault file events
-	 * arrive via {@link onDataChanged} instead, with a scan already in hand.
+	 * Re-render after the view's own state changed (pager, selection, open,
+	 * Today). Vault file events arrive via {@link onDataChanged} instead, with
+	 * the plugin's scan already in hand; a paged heatmap scans its own window.
 	 */
 	refresh(): void {
-		this.onDataChanged(this.runViewScan());
+		this.onDataChanged(this.plugin.getLatestScan());
 	}
 
 	/**
 	 * Primary data-input. Plugin calls this after each scan; the view calls
-	 * it itself via `refresh()` when its own state (pager, settings) changed.
+	 * it itself via `refresh()` when its own state changed.
 	 *
 	 * Pipeline:
-	 *   1. Replace `allActivity` + `activityMap` with the (possibly re-anchored)
-	 *      scan output.
-	 *   2. Clamp pager offset against the new earliest-active day.
-	 *   3. Compute a render fingerprint that captures *everything affecting
-	 *      what we'd draw* — data, selection, pager, visibility toggles,
-	 *      current calendar day. If unchanged, skip rendering entirely.
-	 *   4. If pane is hidden, mark a pending render and return; the plugin's
+	 *   1. Apply the color palette (CSS variables only).
+	 *   2. Take `allActivity` and `byDay` from the plugin's scan (neither
+	 *      depends on the pager), sync the pager with the heatmap's
+	 *      visibility, and clamp it against the earliest active day.
+	 *   3. If the heatmap is paged back, scan its window; otherwise use the
+	 *      plugin's scan.
+	 *   4. Compute a render fingerprint over everything we'd draw (data, the
+	 *      calendar's visible days, selection, pager, shown month, visibility,
+	 *      today). If unchanged, skip rendering entirely.
+	 *   5. If the pane is hidden, mark a pending render; the plugin's
 	 *      `layout-change` hook flushes it when the pane reappears.
-	 *   5. Otherwise, render.
+	 *   6. Otherwise, render.
 	 */
 	onDataChanged(pluginScan: VaultActivity): void {
 		// The palette is CSS variables only, so it applies before the render
@@ -164,17 +177,13 @@ export class VaultPulseView extends ItemView {
 		// rebuild, and the calendar gets it even with the heatmap hidden.
 		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
 
-		// `allActivity` and `byDay` don't depend on the pager, so the plugin's
-		// scan gives them before any paged scan is chosen.
 		this.allActivity = pluginScan.allActivity;
 		this.byDay = pluginScan.byDay;
 		this.syncPagerWithVisibility();
-
-		const activeScan = this.scanForCurrentState(pluginScan);
-		this.allActivity = activeScan.allActivity;
-		this.activityMap = activeScan.windowed;
-		this.byDay = activeScan.byDay;
+		// Clamp before choosing the scan, so a paged scan uses the final anchor.
 		this.clampPagerOffset();
+
+		this.activityMap = this.scanForCurrentState(pluginScan).windowed;
 
 		const key = this.computeRenderKey();
 		if (key === this.lastRenderKey) return;
@@ -232,14 +241,7 @@ export class VaultPulseView extends ItemView {
 		// map. `allActivity` is anchor-independent so the paged scan picks up
 		// the same set as the plugin's scan.
 		if (this.pagerOffsetDays === 0) return pluginScan;
-		return this.runViewScan();
-	}
-
-	private runViewScan(): VaultActivity {
 		const today = DateTime.local().startOf("day");
-		if (this.pagerOffsetDays === 0) {
-			return this.plugin.getLatestScan();
-		}
 		const anchor = today.minus({ days: this.pagerOffsetDays });
 		return buildVaultActivity(fromApp(this.app), this.plugin.settings, {
 			filters: this.plugin.getFilters(),
@@ -448,7 +450,7 @@ export class VaultPulseView extends ItemView {
 				);
 			}
 
-			window.requestAnimationFrame(() => {
+			this.gridEl.win.requestAnimationFrame(() => {
 				this.gridEl.scrollLeft = this.gridEl.scrollWidth;
 			});
 		}
@@ -493,15 +495,38 @@ export class VaultPulseView extends ItemView {
 	}
 
 	private onCalendarActivate(target: EventTarget | null): void {
-		if (!(target instanceof Element)) return;
-		const arrow = target.closest<HTMLElement>("[data-action]");
+		const el = elementFrom(target);
+		if (!el) return;
+		const arrow = el.closest<HTMLElement>("[data-action]");
 		if (arrow) {
 			this.shiftShownMonth(arrow.dataset.action === "prev" ? -1 : 1);
 			return;
 		}
-		const cell = target.closest<HTMLElement>(".vault-pulse-calendar-day");
+		const cell = el.closest<HTMLElement>(".vault-pulse-calendar-day");
 		const iso = cell?.dataset.date;
 		if (iso) this.selectDay(iso);
+	}
+
+	/**
+	 * Arrow keys in the calendar select the neighbouring day (±1 for left and
+	 * right, ±7 for up and down), moving to the next month when needed, and
+	 * keep keyboard focus on the newly selected cell.
+	 */
+	private moveCalendarFocus(target: EventTarget | null, days: number): void {
+		const cell = elementFrom(target)?.closest<HTMLElement>(".vault-pulse-calendar-day");
+		const from = cell?.dataset.date ?? this.selectedIso;
+		if (!from) return;
+		const nextIso = toISODate(DateTime.fromISO(from).plus({ days }));
+		this.selectDay(nextIso);
+		this.calendarEl
+			.querySelector<HTMLElement>(`.vault-pulse-calendar-day[data-date="${nextIso}"]`)
+			?.focus();
+	}
+
+	private heatmapCell(iso: string): HTMLElement | null {
+		return this.gridEl.querySelector<HTMLElement>(
+			`.vault-pulse-cell[data-date="${iso}"]`
+		);
 	}
 
 	/**
@@ -509,11 +534,9 @@ export class VaultPulseView extends ItemView {
 	 * Runs after any rebuild's own scroll-to-end in the same frame.
 	 */
 	private revealSelectedHeatmapCell(): void {
-		window.requestAnimationFrame(() => {
+		this.gridEl.win.requestAnimationFrame(() => {
 			if (!this.selectedIso) return;
-			const cell = this.gridEl.querySelector<HTMLElement>(
-				`.vault-pulse-cell[data-date="${this.selectedIso}"]`
-			);
+			const cell = this.heatmapCell(this.selectedIso);
 			if (!cell) return;
 			const grid = this.gridEl.getBoundingClientRect();
 			const box = cell.getBoundingClientRect();
@@ -554,34 +577,16 @@ export class VaultPulseView extends ItemView {
 
 	/**
 	 * Called by the "Jump to today" command and the Today button in the
-	 * detail panel header. Resets any paged offset and selects today so the
-	 * user returns to the live view in one click.
+	 * detail panel header. Selects today through the shared path, which
+	 * resets a paged heatmap (today is never in a paged-back grid) and turns
+	 * the calendar to this month, then scrolls the heatmap home.
 	 */
 	scrollToToday(): void {
-		const wasPaged = this.pagerOffsetDays > 0;
-		const today = DateTime.local().startOf("day");
-		this.pagerOffsetDays = 0;
-		this.selectedIso = toISODate(today);
-		const monthChanged = !today.hasSame(this.shownMonth, "month");
-		this.shownMonth = today.startOf("month");
-
-		if (wasPaged) {
-			// Grid needs to rebuild around the new window end.
-			this.refresh();
-			return;
-		}
-
-		if (monthChanged && effectiveVisibility(this.plugin.settings).calendar) {
-			this.renderCalendarSection();
-		}
-		this.renderSelection();
-		this.lastRenderKey = this.computeRenderKey();
-		window.requestAnimationFrame(() => {
+		const todayIso = toISODate(DateTime.local().startOf("day"));
+		this.selectDay(todayIso);
+		this.gridEl.win.requestAnimationFrame(() => {
 			this.gridEl.scrollLeft = this.gridEl.scrollWidth;
-			const cell = this.gridEl.querySelector<HTMLElement>(
-				`.vault-pulse-cell[data-date="${this.selectedIso}"]`
-			);
-			cell?.focus();
+			this.heatmapCell(todayIso)?.focus();
 		});
 	}
 
@@ -662,27 +667,27 @@ export class VaultPulseView extends ItemView {
 	}
 
 	private renderSelection(): void {
+		// aria-selected rather than `.is-selected`, which some themes restyle
+		// globally (see AGENTS.md).
 		const previous = this.gridEl.querySelector<HTMLElement>(
-			".vault-pulse-cell.is-selected"
+			'.vault-pulse-cell[aria-selected="true"]'
 		);
 		if (previous) {
-			previous.classList.remove("is-selected");
+			previous.removeAttribute("aria-selected");
 			previous.tabIndex = -1;
 		}
 
 		if (this.selectedIso) {
-			const cell = this.gridEl.querySelector<HTMLElement>(
-				`.vault-pulse-cell[data-date="${this.selectedIso}"]`
-			);
+			const cell = this.heatmapCell(this.selectedIso);
 			if (cell) {
-				cell.classList.add("is-selected");
+				cell.setAttribute("aria-selected", "true");
 				cell.tabIndex = 0;
 			}
 		}
 
 		const todayIso = toISODate(DateTime.local().startOf("day"));
 		const selectedStreak = this.selectedIso
-			? this.computeStreakEndingAt(this.selectedIso)
+			? this.streakWalk(this.selectedIso)
 			: { count: 0, isos: [], startIso: null };
 		// Yesterday's still-warm streak, surfaced only when today is empty.
 		// Drives the desaturated chip + today-cell tint + status-bar fallback.
@@ -852,7 +857,7 @@ export class VaultPulseView extends ItemView {
 
 	private computeTodayStreak(): StreakWalk {
 		const todayIso = toISODate(DateTime.local().startOf("day"));
-		return this.computeStreakEndingAt(todayIso);
+		return this.streakWalk(todayIso);
 	}
 
 	/**
@@ -863,35 +868,16 @@ export class VaultPulseView extends ItemView {
 	 */
 	private updateTodayCellPending(carryOver: { count: number } | null): void {
 		const todayIso = toISODate(DateTime.local().startOf("day"));
-		const cell = this.gridEl.querySelector<HTMLElement>(
-			`.vault-pulse-cell[data-date="${todayIso}"]`
-		);
+		const cell = this.heatmapCell(todayIso);
 		if (!cell) return;
 		const shouldMark = carryOver !== null && carryOver.count >= 2;
 		if (shouldMark) cell.dataset.streakPending = "1";
 		else delete cell.dataset.streakPending;
 	}
 
-	private computeStreakEndingAt(iso: string): StreakWalk {
-		if (!this.allActivity.has(iso)) {
-			return { count: 0, isos: [], startIso: null };
-		}
-
-		const isos: string[] = [iso];
-		let cursor = DateTime.fromISO(iso).minus({ days: 1 });
-		for (;;) {
-			const key = toISODate(cursor);
-			if (!this.allActivity.has(key)) break;
-			isos.push(key);
-			cursor = cursor.minus({ days: 1 });
-		}
-		// Chronological order: oldest → newest.
-		isos.reverse();
-		return {
-			count: isos.length,
-			isos,
-			startIso: isos[0] ?? null,
-		};
+	private streakWalk(iso: string): StreakWalk {
+		const isos = streakEndingAt(this.allActivity, iso);
+		return { count: isos.length, isos, startIso: isos[0] ?? null };
 	}
 
 	onClose(): Promise<void> {

@@ -15,7 +15,7 @@ import {
 	type VaultActivity,
 } from "./data";
 import { toISODate } from "./dateUtils";
-import { computeCarryOverStreak } from "./streaks";
+import { computeCarryOverStreak, streakEndingAt } from "./streaks";
 
 export const HOVER_LINK_SOURCE = "vault-pulse";
 
@@ -36,17 +36,9 @@ export default class VaultPulsePlugin extends Plugin {
 			(leaf) => new VaultPulseView(leaf, this)
 		);
 
-		// Opts detail-panel rows into Obsidian's built-in page-preview popover.
-		// `registerHoverLinkSource` isn't in the public API types but is stable
-		// at runtime — ppeirce's heatmap-bases-view uses the same cast.
-		(
-			this.app.workspace as unknown as {
-				registerHoverLinkSource: (
-					id: string,
-					info: { display: string; defaultMod: boolean }
-				) => void;
-			}
-		).registerHoverLinkSource(HOVER_LINK_SOURCE, {
+		// Opts detail-panel rows into Obsidian's page-preview popover. The
+		// Plugin method unregisters the source when the plugin unloads.
+		this.registerHoverLinkSource(HOVER_LINK_SOURCE, {
 			display: "Vault Pulse",
 			defaultMod: true,
 		});
@@ -247,7 +239,7 @@ export default class VaultPulsePlugin extends Plugin {
 
 		const todayIso = toISODate(DateTime.local().startOf("day"));
 		const todayCount = scan.allActivity.get(todayIso) ?? 0;
-		const streak = computeStreakFromSet(scan.allActivity, todayIso);
+		const streak = streakEndingAt(scan.allActivity, todayIso).length;
 		// Yesterday's run, surfaced only when today is empty AND yesterday was
 		// part of a multi-day run worth signalling. See streaks.ts.
 		const carryOver = computeCarryOverStreak(scan.allActivity, todayIso);
@@ -304,21 +296,6 @@ export default class VaultPulsePlugin extends Plugin {
 	}
 }
 
-function computeStreakFromSet(
-	activity: Map<string, number>,
-	endIso: string
-): number {
-	if (!activity.has(endIso)) return 0;
-	let count = 1;
-	let cursor = DateTime.fromISO(endIso).minus({ days: 1 });
-	for (;;) {
-		const key = toISODate(cursor);
-		if (!activity.has(key)) break;
-		count += 1;
-		cursor = cursor.minus({ days: 1 });
-	}
-	return count;
-}
 
 function buildStatusTooltip(
 	streak: number,

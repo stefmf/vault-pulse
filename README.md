@@ -2,18 +2,18 @@
 
 A month calendar and a GitHub-style activity heatmap for Obsidian. The calendar puts a dot on each day for every note created or modified that day. The heatmap shows a year of writing cadence in a 53×7 grid. Click a day in either and the panel below lists its notes.
 
-| Calendar, light theme | Calendar, dark theme |
+| Light theme | Dark theme |
 |:-----:|:-----:|
-| ![Calendar in the default light theme](docs/calendar-light.png) | ![Calendar in the default dark theme](docs/calendar-dark.png) |
+| ![The Vault Pulse pane in the default light theme: calendar, heatmap and the selected day's notes](docs/pane-light.png) | ![The Vault Pulse pane in the default dark theme](docs/pane-dark.png) |
 
-_Accent dots are notes created that day, grey dots notes last modified that day. The ringed day is today; the filled day is selected._
+_The pane with the Auto palette, which follows your theme's accent. In the calendar, accent dots are notes created that day and grey dots notes last modified that day; the ringed day is today and the filled day is selected. Below, the selected day's notes in Created and Modified groups._
 
 | Green | Heat | Sunset |
 |:-----:|:----:|:------:|
 | ![Green palette, light theme](docs/palette-green-light.png) | ![Heat palette, light theme](docs/palette-heat-light.png) | ![Sunset palette, light theme](docs/palette-sunset-light.png) |
 | ![Green palette, dark theme](docs/palette-green-dark.png) | ![Heat palette, dark theme](docs/palette-heat-dark.png) | ![Sunset palette, dark theme](docs/palette-sunset-dark.png) |
 
-_Three of the built-in palettes, in light and dark themes._ Auto (theme accent) and Custom (any hex) round out the five options.
+_Three of the built-in palettes, in light and dark themes; each colors the calendar and the heatmap. Auto (theme accent) and Custom (any hex) round out the five options._
 
 ## Features
 
@@ -32,7 +32,8 @@ _Three of the built-in palettes, in light and dark themes._ Auto (theme accent) 
 - **Style Settings support** — exposes the calendar dot, flame and trophy colors as editable variables when the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin is installed.
 - **Localized** — all user-facing strings route through `src/i18n/` with English shipping today and community-contributed locales welcome.
 - **Jump to today** — command palette entry, plus a "Today →" button in the detail header when you've scrolled away.
-- **Keyboard navigation** — Tab into the grid, then ←/→ = ±week, ↑/↓ = ±day; the detail panel updates as you move.
+- **Keyboard navigation** — Tab into the calendar, then ←/→ = ±day, ↑/↓ = ±week, Enter selects; Tab into the heatmap, then ←/→ = ±week, ↑/↓ = ±day. The detail panel updates as you move.
+- **Pop-out windows** — the pane works when dragged into its own window.
 - **Apple-style scroll bounce** — mass-spring-damper physics tuned to SwiftUI's default feel (`response=0.55s`, `dampingFraction=0.825`).
 - **Theme-aware** — colors follow your Obsidian theme and re-render on theme switch.
 - **Auto-updates** — edits, creates, deletes, and renames re-render within ~200ms (debounced).
@@ -64,7 +65,7 @@ Copy `main.js`, `manifest.json`, and `styles.css` into `<YourVault>/.obsidian/pl
 
 ## Usage
 
-Open the pane via the **grid** ribbon icon (left sidebar) or the command palette entry **Vault Pulse: Open heatmap**. The calendar sits at the top, the heatmap under it, and the day's notes at the bottom.
+Open the pane via the **grid** ribbon icon (left sidebar) or the command palette entry **Vault Pulse: Open calendar and heatmap**. The calendar sits at the top, the heatmap under it, and the day's notes at the bottom.
 
 - **Click** a calendar day → it's selected in both views and its notes are listed. The calendar's arrows change only the month shown.
 - **Hover** a heatmap cell → tooltip: `Mon DD · N files`.
