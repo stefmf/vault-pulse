@@ -80,7 +80,7 @@ Open the pane via the **grid** ribbon icon (left sidebar) or the command palette
 |---------|---------|-------|
 | **Activity source** | Combined / Modified / Created | Default: Combined. A file counts for a day if **either** created OR updated matches that day. Applies to the heatmap; the calendar always shows both. |
 | **Modified date** | Updated property, then file time / File time only | Default: Updated property, then file time. Which date counts as a note's last change, in both views. Pick file time only if your `updated:` property is a manual review date rather than one a plugin keeps current. |
-| **Color palette** | Auto · Green · Heat · Sunset · Custom hex | Auto follows `--interactive-accent`. Named palettes use discrete hex values tuned for both light and dark themes. |
+| **Color palette** | Auto · Green · Heat · Sunset · Custom hex | Auto follows `--interactive-accent`. Named palettes use discrete hex values tuned for both light and dark themes. Colors the calendar too: its today ring, selected day and created dots use the palette's strongest color. |
 | **Custom hex color** | `#RRGGBB` | Only visible when palette is "Custom". |
 | **Window length** | 90 / 180 / 365 days | Default: 365. Shorter windows narrow the grid but bring recent activity into sharper view. |
 | **Week starts on** | Sunday / Monday | Default: Sunday (matches GitHub). |

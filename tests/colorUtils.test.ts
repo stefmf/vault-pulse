@@ -8,6 +8,7 @@ import {
 	levelForCount,
 	parseColor,
 	quantile,
+	readableTextOn,
 } from "../src/colorUtils";
 import type { ActivityMap } from "../src/types";
 import type { VaultPulseSettings } from "../src/settings";
@@ -177,6 +178,32 @@ describe("computeColorRamp", () => {
 		);
 		expect(ramp.level4).toContain("57, 211, 83");
 	});
+
+	it("builds Auto from --interactive-accent in CSS, so hsl() theme accents work", () => {
+		// The default theme's accent is hsl(...), which a JS hex/rgb parse can't read.
+		const ramp = computeColorRamp(makeSettings({ colorBase: "theme" }));
+		expect(ramp.level1).toBe("color-mix(in srgb, var(--interactive-accent) 25%, transparent)");
+		expect(ramp.level3).toBe("color-mix(in srgb, var(--interactive-accent) 75%, transparent)");
+		expect(ramp.level4).toBe("var(--interactive-accent)");
+		expect(ramp.onLevel4).toBe("var(--text-on-accent)");
+	});
+
+	it("picks readable text for the calendar's selected day on each palette", () => {
+		expect(computeColorRamp(makeSettings({ colorBase: "sunset" })).onLevel4).toBe("#ffffff");
+		expect(computeColorRamp(makeSettings({ colorBase: "heat" })).onLevel4).toBe("#ffffff");
+		expect(computeColorRamp(makeSettings({ colorBase: "green" })).onLevel4).toBe("#ffffff");
+		expect(
+			computeColorRamp(makeSettings({ colorBase: "custom", customHexColor: "#fde047" })).onLevel4
+		).toBe("#000000");
+	});
+});
+
+describe("readableTextOn", () => {
+	it("is white on dark colors and black on light ones", () => {
+		expect(readableTextOn({ r: 0, g: 0, b: 0 })).toBe("#ffffff");
+		expect(readableTextOn({ r: 255, g: 255, b: 255 })).toBe("#000000");
+		expect(readableTextOn({ r: 67, g: 56, b: 202 })).toBe("#ffffff");
+	});
 });
 
 describe("applyRampToContainer", () => {
@@ -187,5 +214,6 @@ describe("applyRampToContainer", () => {
 			"var(--background-modifier-border)"
 		);
 		expect(container.style.getPropertyValue("--vp-level-4")).toBe(DISCRETE_PALETTES.heat[3]);
+		expect(container.style.getPropertyValue("--vp-on-level-4")).toBe("#ffffff");
 	});
 });

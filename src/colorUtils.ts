@@ -118,11 +118,16 @@ function clamp(n: number): number {
 
 /**
  * Resolve a named palette or alpha-blend a single color into a 5-stop ramp.
+ * `level4` is also the calendar's accent (today ring, selected day, created
+ * dots), so the calendar follows the same palette as the heatmap.
  *
  * - Named palettes (green, heat, sunset): four discrete hex colors, each
  *   tuned for visibility on both themes.
- * - Theme / custom: alpha-blend one base color at 25/50/75/100% opacity so
- *   the theme's background shows through low-activity days.
+ * - Theme: CSS mixes of `--interactive-accent` at 25/50/75/100%, so any
+ *   color format a theme uses (hex, rgb, hsl) works and theme switches apply
+ *   without a re-render.
+ * - Custom: the hex alpha-blended at 25/50/75/100% opacity so the theme's
+ *   background shows through low-activity days.
  */
 export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 	const name = settings.colorBase;
@@ -135,11 +140,25 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 			level2: palette[1],
 			level3: palette[2],
 			level4: palette[3],
+			onLevel4: readableTextOn(parseColor(palette[3])),
 		};
 	}
 
-	const baseColor = name === "custom" ? normalizeHex(settings.customHexColor) : readThemeAccent();
-	const { r, g, b } = parseColor(baseColor);
+	if (name !== "custom") {
+		const mix = (pct: number) =>
+			`color-mix(in srgb, var(--interactive-accent) ${pct}%, transparent)`;
+		return {
+			level0: "var(--background-modifier-border)",
+			level1: mix(25),
+			level2: mix(50),
+			level3: mix(75),
+			level4: "var(--interactive-accent)",
+			onLevel4: "var(--text-on-accent)",
+		};
+	}
+
+	const base = parseColor(normalizeHex(settings.customHexColor));
+	const { r, g, b } = base;
 	const rgba = (alpha: number) => `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
 	return {
 		level0: "var(--background-modifier-border)",
@@ -147,14 +166,19 @@ export function computeColorRamp(settings: VaultPulseSettings): ColorRamp {
 		level2: rgba(0.5),
 		level3: rgba(0.75),
 		level4: rgba(1),
+		onLevel4: readableTextOn(base),
 	};
 }
 
-function readThemeAccent(): string {
-	const computed = getComputedStyle(activeDocument.body)
-		.getPropertyValue("--interactive-accent")
-		.trim();
-	return computed || GITHUB_GREEN;
+/** Black or white, whichever reads better on the given color (WCAG luminance). */
+export function readableTextOn({ r, g, b }: RGB): string {
+	const channel = (c: number) => {
+		const s = c / 255;
+		return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+	};
+	const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+	// Contrast against white vs black; pick the larger.
+	return (1.05 / (luminance + 0.05)) >= ((luminance + 0.05) / 0.05) ? "#ffffff" : "#000000";
 }
 
 function normalizeHex(hex: string): string {
@@ -172,4 +196,5 @@ export function applyRampToContainer(container: HTMLElement, ramp: ColorRamp): v
 	container.style.setProperty("--vp-level-2", ramp.level2);
 	container.style.setProperty("--vp-level-3", ramp.level3);
 	container.style.setProperty("--vp-level-4", ramp.level4);
+	container.style.setProperty("--vp-on-level-4", ramp.onLevel4);
 }

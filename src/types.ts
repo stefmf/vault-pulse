@@ -22,4 +22,6 @@ export interface ColorRamp {
 	level2: string;
 	level3: string;
 	level4: string;
+	/** Text color that reads on `level4`, for the calendar's selected day. */
+	onLevel4: string;
 }
