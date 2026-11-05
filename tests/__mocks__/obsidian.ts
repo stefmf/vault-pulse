@@ -53,6 +53,26 @@ export class Menu {
 	}
 	showAtMouseEvent(_evt: unknown): void {}
 }
+/**
+ * Obsidian's bundled moment. The locale comes from a test-set
+ * `window.moment` stub when there is one (see tests/i18n.test.ts), else "en".
+ */
+export const moment = {
+	locale(): string {
+		const stub = (globalThis as unknown as { moment?: { locale?: () => string } }).moment;
+		return stub?.locale?.() ?? "en";
+	},
+};
+
+/** Obsidian's normalizePath: forward slashes, no duplicate, leading or trailing slash. */
+export function normalizePath(path: string): string {
+	const cleaned = path
+		.replace(/\\/g, "/")
+		.replace(/\/+/g, "/")
+		.replace(/^\/|\/$/g, "");
+	return cleaned === "" ? "/" : cleaned;
+}
+
 export type PaneType = "tab" | "split" | "window";
 export class Keymap {
 	/** Real Obsidian also maps Alt and Shift combinations to "split"/"window". */
@@ -161,6 +181,19 @@ function installDomHelpers(): void {
 	elProto.isShown = function (this: HTMLElement) {
 		return true;
 	};
+
+	// Cross-window helpers Obsidian adds to every Node. A single jsdom window
+	// has no pop-outs, so these reduce to the plain checks.
+	const nodeProto = Node.prototype as unknown as Record<string, unknown>;
+	nodeProto.instanceOf = function (this: Node, type: abstract new (...args: never[]) => unknown) {
+		return this instanceof type;
+	};
+	Object.defineProperty(Node.prototype, "win", {
+		configurable: true,
+		get(this: Node) {
+			return this.ownerDocument?.defaultView ?? window;
+		},
+	});
 
 	// Global createFragment() — Obsidian exposes this on the obsidian module
 	// AND as a window-level helper. Tests can use either path.

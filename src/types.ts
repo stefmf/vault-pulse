@@ -1,8 +1,5 @@
-import type { TFile } from "obsidian";
-
 export interface ActivityDay {
 	isoDate: string;
-	files: TFile[];
 	count: number;
 }
 
@@ -24,4 +21,11 @@ export interface ColorRamp {
 	level4: string;
 	/** Text color that reads on `level4`, for the calendar's selected day. */
 	onLevel4: string;
+	/**
+	 * The palette color as text or a thin ring on the pane background (year,
+	 * today, selection rings), per theme mode: the strongest stop reads on a
+	 * light theme, a lighter stop on a dark one. CSS picks by `.theme-dark`.
+	 */
+	accentTextLight: string;
+	accentTextDark: string;
 }

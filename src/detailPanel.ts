@@ -352,7 +352,10 @@ function buildFileRow(
 	};
 	row.addEventListener("click", open);
 	row.addEventListener("keydown", (evt) => {
-		if (evt.key === "Enter" || evt.key === " ") open(evt);
+		if (evt.key !== "Enter" && evt.key !== " ") return;
+		// Space would otherwise also scroll the list.
+		evt.preventDefault();
+		open(evt);
 	});
 	row.addEventListener("mouseover", (evt) => {
 		onHoverPreview(file, evt, row);

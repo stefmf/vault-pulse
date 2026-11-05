@@ -3,12 +3,15 @@ import { setIcon, setTooltip } from "obsidian";
 import {
 	computeGridStart,
 	computeMonthLabels,
+	dayCountLabel,
 	totalColumns,
 	toISODate,
 	weekColumn,
+	weekdayNames,
 	weekRow,
 } from "./dateUtils";
 import { levelForCount } from "./colorUtils";
+import { t } from "./i18n";
 import type { ActivityMap, QuantileBuckets } from "./types";
 import type { VaultPulseSettings } from "./settings";
 
@@ -75,10 +78,8 @@ function renderMonthLabelRow(
 function renderDayLabelColumn(parent: HTMLElement, weekStart: 0 | 1): HTMLElement {
 	const col = parent.createDiv({ cls: "vault-pulse-day-labels" });
 
-	const labels =
-		weekStart === 0
-			? ["", "Mon", "", "Wed", "", "Fri", ""]
-			: ["", "Tue", "", "Thu", "", "Sat", ""];
+	// Label every other row (rows 2, 4 and 6), like GitHub's grid.
+	const labels = weekdayNames(weekStart).map((name, i) => (i % 2 === 1 ? name : ""));
 
 	labels.forEach((text, i) => {
 		const el = col.createSpan({ cls: "vault-pulse-day-label", text });
@@ -126,10 +127,7 @@ function renderCellsGrid(
 		cell.style.gridRow = String(row + 1);
 		cell.style.gridColumn = String(col + 1);
 		cell.setAttribute("role", "gridcell");
-		cell.setAttribute(
-			"aria-label",
-			`${cursor.toFormat("MMM d")}, ${count} ${count === 1 ? "file" : "files"}`
-		);
+		cell.setAttribute("aria-label", dayCountLabel(cursor, count));
 		cell.tabIndex = -1;
 
 		cursor = cursor.plus({ days: 1 });
@@ -202,8 +200,8 @@ function buildPagerButton(
  * right `data-date`; we only refresh `data-count`, `data-level`, `data-today`,
  * and `aria-label` where they differ.
  *
- * Preserves any classes maintained outside this module — `.is-selected`,
- * `:focus-visible` — because we never touch them.
+ * Preserves state maintained outside this module (the view's
+ * `aria-selected`, focus) because we never touch it.
  */
 export function updateHeatmapCells(
 	gridEl: HTMLElement,
@@ -228,9 +226,7 @@ export function updateHeatmapCells(
 		if (isToday && cell.dataset.today !== "1") cell.dataset.today = "1";
 		if (!isToday && cell.dataset.today) delete cell.dataset.today;
 
-		const newLabel = `${DateTime.fromISO(iso).toFormat(
-			"MMM d"
-		)}, ${count} ${count === 1 ? "file" : "files"}`;
+		const newLabel = dayCountLabel(DateTime.fromISO(iso), count);
 		if (cell.getAttribute("aria-label") !== newLabel) {
 			cell.setAttribute("aria-label", newLabel);
 		}
@@ -296,7 +292,7 @@ export function renderLegend(container: HTMLElement): void {
 	container.empty();
 	container.addClass("vault-pulse-legend");
 
-	container.createSpan({ cls: "vault-pulse-legend-label", text: "Less" });
+	container.createSpan({ cls: "vault-pulse-legend-label", text: t("legend.less") });
 
 	const cells = container.createDiv({ cls: "vault-pulse-legend-cells" });
 	for (let level = 0; level <= 4; level++) {
@@ -304,7 +300,7 @@ export function renderLegend(container: HTMLElement): void {
 		cell.dataset.level = String(level);
 	}
 
-	container.createSpan({ cls: "vault-pulse-legend-label", text: "More" });
+	container.createSpan({ cls: "vault-pulse-legend-label", text: t("legend.more") });
 }
 
 export interface SparklineOptions {
@@ -377,10 +373,7 @@ export function renderSparkline(options: SparklineOptions): void {
 
 		el.addEventListener("click", () => onSelect(bar.iso, bar.count));
 		el.addEventListener("mouseover", () => {
-			const tooltip = `${bar.date.toFormat("MMM d")} · ${bar.count} ${
-				bar.count === 1 ? "file" : "files"
-			}`;
-			setTooltip(el, tooltip, { placement: "top" });
+			setTooltip(el, dayCountLabel(bar.date, bar.count), { placement: "top" });
 		});
 	});
 }

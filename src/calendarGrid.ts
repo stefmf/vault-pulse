@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { computeGridStart, toISODate } from "./dateUtils";
+import { computeGridStart, toISODate, weekRow } from "./dateUtils";
 
 export const CALENDAR_CELLS = 42;
 
@@ -17,9 +17,7 @@ export interface CalendarDay {
  */
 export function calendarDays(month: DateTime, weekStart: 0 | 1): CalendarDay[] {
 	const first = month.startOf("month");
-	const startLuxon = weekStart === 0 ? 7 : 1;
-	const back = (first.weekday - startLuxon + 7) % 7;
-	const start = first.minus({ days: back });
+	const start = first.minus({ days: weekRow(first, weekStart) });
 
 	const days: CalendarDay[] = [];
 	for (let i = 0; i < CALENDAR_CELLS; i++) {
@@ -75,16 +73,16 @@ export function offsetForDay(input: OffsetForDayInput): number {
 		return currentOffset;
 	}
 
+	// Window k ends k·windowDays before today and starts windowDays − 1 days
+	// earlier, so k = floor(daysBack / windowDays) always holds the day; a
+	// smaller k can too, through its week-aligned grid start.
 	const day = DateTime.fromISO(dayIso);
 	const daysBack = Math.max(0, Math.floor(today.diff(day, "days").days));
-	const maxSteps = Math.ceil(daysBack / windowDays) + 1;
-	for (let k = 0; k <= maxSteps; k++) {
-		const offset = k * windowDays;
-		if (gridHolds(dayIso, today, offset, windowDays, weekStart)) {
-			return clampPagerOffset(offset, today, earliestIso);
-		}
+	let k = Math.floor(daysBack / windowDays);
+	while (k > 0 && gridHolds(dayIso, today, (k - 1) * windowDays, windowDays, weekStart)) {
+		k--;
 	}
-	return clampPagerOffset(maxSteps * windowDays, today, earliestIso);
+	return clampPagerOffset(k * windowDays, today, earliestIso);
 }
 
 function gridHolds(

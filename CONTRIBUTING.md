@@ -39,6 +39,7 @@ See [`AGENTS.md`](AGENTS.md) for the full map — module responsibilities, event
 
 ## Pull request checklist
 
+- [ ] `npm run lint:obsidian` passes with no warnings (the community directory's rule set; CI runs it too)
 - [ ] `npm test` passes
 - [ ] `npm run build` succeeds with no TypeScript errors
 - [ ] If a bug fix, the PR body references the issue (`Fixes #N`)
@@ -57,11 +58,13 @@ Examples:
 
 ## Releasing (maintainer only)
 
-1. Bump the version in `manifest.json`, `package.json`, and add an entry to `versions.json`.
-2. Commit: `chore: release X.Y.Z`.
-3. Tag without a `v` prefix: `git tag X.Y.Z`.
-4. Push both: `git push origin main X.Y.Z`.
-5. The GitHub Actions release workflow builds and uploads `main.js`, `manifest.json`, and `styles.css` to the release. The community plugin catalog refreshes within an hour.
+The community directory reads `manifest.json` at the head of `main`, so `main` must never name a version whose release doesn't exist yet. Release from the branch, then merge.
+
+1. On a `chore/release-X.Y.Z` branch, run `npm version X.Y.Z --no-git-tag-version` (updates `manifest.json`, `package.json`, `versions.json`) and move the `[Unreleased]` notes in `CHANGELOG.md` under `X.Y.Z`. Commit `chore: release X.Y.Z` and push the branch.
+2. In the community directory, run **Review branch** on that branch (a preview of the automated scan). Fix anything it reports.
+3. Tag the branch head without a `v` prefix (`git tag X.Y.Z`) and push the tag. The release workflow checks the tag matches `manifest.json`, runs lint and tests, builds, attests, and uploads `main.js`, `manifest.json` and `styles.css`.
+4. Once the release exists, merge the release PR.
+5. The directory picks up new releases periodically; **Check for new releases** on the plugin's directory page speeds it up.
 
 ## License
 

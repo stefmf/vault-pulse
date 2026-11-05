@@ -85,7 +85,6 @@ describe("buildActivityMap", () => {
 		expect(map.size).toBeLessThanOrEqual(371);
 		for (const day of map.values()) {
 			expect(day.count).toBe(0);
-			expect(day.files).toEqual([]);
 		}
 	});
 
@@ -185,7 +184,6 @@ describe("buildActivityMap", () => {
 		const map = buildActivityMap(mkSource(files), settings(), { today: TODAY });
 		const day = map.get("2026-04-10");
 		expect(day?.count).toBe(3);
-		expect(day?.files).toHaveLength(3);
 	});
 });
 
@@ -234,13 +232,25 @@ describe("buildActivityMap filters", () => {
 			mkFile("Archive/old.md", today, today),
 			mkFile("Archive/deep/nested.md", today, today),
 		];
-		const map = buildActivityMap(
+		const scan = buildVaultActivity(
 			mkSource(files),
 			settings({ excludeFolders: "Archive" }),
 			{ today: TODAY }
 		);
-		expect(map.get("2026-04-12")?.count).toBe(1);
-		expect(map.get("2026-04-12")?.files[0].path).toBe("work/meeting.md");
+		expect(scan.windowed.get("2026-04-12")?.count).toBe(1);
+		const kept = scan.byDay.get("2026-04-12")?.created.map((f) => f.path);
+		expect(kept).toEqual(["work/meeting.md"]);
+	});
+
+	it("normalizes excluded folder paths, so a trailing or leading slash still matches", () => {
+		const today = modTs("2026-04-12");
+		const files = [mkFile("work/a.md", today, today), mkFile("Archive/b.md", today, today)];
+		for (const excludeFolders of ["Archive/", "/Archive", " Archive// "]) {
+			const map = buildActivityMap(mkSource(files), settings({ excludeFolders }), {
+				today: TODAY,
+			});
+			expect(map.get("2026-04-12")?.count).toBe(1);
+		}
 	});
 
 	it("exclude matches prefix only, not middle-of-path", () => {
@@ -249,13 +259,14 @@ describe("buildActivityMap filters", () => {
 			mkFile("My Archive/note.md", today, today), // NOT excluded
 			mkFile("Archive/note.md", today, today), // excluded
 		];
-		const map = buildActivityMap(
+		const scan = buildVaultActivity(
 			mkSource(files),
 			settings({ excludeFolders: "Archive" }),
 			{ today: TODAY }
 		);
-		expect(map.get("2026-04-12")?.count).toBe(1);
-		expect(map.get("2026-04-12")?.files[0].path).toBe("My Archive/note.md");
+		expect(scan.windowed.get("2026-04-12")?.count).toBe(1);
+		const kept = scan.byDay.get("2026-04-12")?.created.map((f) => f.path);
+		expect(kept).toEqual(["My Archive/note.md"]);
 	});
 
 	it("handles multiple comma-separated excluded folders", () => {

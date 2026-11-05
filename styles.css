@@ -4,7 +4,7 @@ id: vault-pulse
 settings:
     -
         id: vault-pulse-visibility-heading
-        title: Visibility
+        title: Colors
         type: heading
         level: 3
     -
@@ -37,7 +37,7 @@ settings:
         default: '#999999'
 */
 
-/* Vault Pulse — sidebar heatmap styles */
+/* Vault Pulse — sidebar pane styles: calendar, heatmap, day list */
 
 .vault-pulse-elastic-active {
 	will-change: transform;
@@ -56,8 +56,13 @@ settings:
 	--vp-level-2: rgba(57, 211, 83, 0.5);
 	--vp-level-3: rgba(57, 211, 83, 0.75);
 	--vp-level-4: rgb(57, 211, 83);
-	/* Text on --vp-level-4 (the calendar's selected day); set with the ramp. */
+	/* Set with the ramp (colorUtils.computeColorRamp): text on --vp-level-4,
+	   and the palette color as readable text or a ring on the pane, one per
+	   theme mode. --vp-accent-text picks between them below. */
 	--vp-on-level-4: var(--text-on-accent);
+	--vp-accent-text-light: var(--interactive-accent);
+	--vp-accent-text-dark: var(--interactive-accent);
+	--vp-accent-text: var(--vp-accent-text-light);
 
 	/* Style Settings variables (--vp-streak-*-color, --vp-calendar-*-color)
 	   are set on body and only read here, with fallbacks. Declaring them on
@@ -68,6 +73,10 @@ settings:
 	flex-direction: column;
 	overflow: hidden;
 	font-family: var(--font-interface);
+}
+
+.theme-dark .vault-pulse-view.view-content {
+	--vp-accent-text: var(--vp-accent-text-dark);
 }
 
 /* Calendar — month grid above the heatmap. The look follows Liam Cain's
@@ -108,10 +117,11 @@ settings:
 	color: var(--text-normal);
 }
 
-/* The calendar's accent is the palette's strongest color (--vp-level-4):
-   the theme accent under Auto, else the chosen palette. */
+/* The calendar's accent follows the color palette: --vp-level-4 for fills
+   and dots, --vp-accent-text for text and rings (readable on dark themes).
+   Both are the theme accent under Auto. */
 .vault-pulse-calendar-year {
-	color: var(--vp-level-4);
+	color: var(--vp-accent-text);
 }
 
 .vault-pulse-calendar-arrows {
@@ -176,9 +186,9 @@ settings:
 }
 
 .vault-pulse-calendar-day.is-today {
-	color: var(--vp-level-4);
+	color: var(--vp-accent-text);
 	font-weight: 600;
-	box-shadow: inset 0 0 0 1px var(--vp-level-4);
+	box-shadow: inset 0 0 0 1px var(--vp-accent-text);
 }
 
 /* The selected day is marked with aria-pressed rather than `.is-selected`,
@@ -337,15 +347,19 @@ settings:
 .vault-pulse-cell:hover {
 	transform: scale(1.25);
 	box-shadow:
-		inset 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
+		inset 0 0 0 1px color-mix(in srgb, var(--vp-accent-text) 40%, transparent),
 		0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.vault-pulse-cell.is-selected,
+/* aria-selected rather than `.is-selected`, which some themes restyle
+   globally. The ring follows the color palette and sits inside the cell
+   (the grid's paint containment clips anything drawn outside it), with a
+   pane-colored band so it stays visible on a cell of the same color. */
+.vault-pulse-cell[aria-selected="true"],
 .vault-pulse-cell:focus-visible {
 	box-shadow:
-		0 0 0 1.5px var(--interactive-accent),
-		0 0 8px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+		inset 0 0 0 1.5px var(--vp-accent-text),
+		inset 0 0 0 2.5px var(--background-secondary);
 	outline: none;
 }
 
@@ -611,9 +625,6 @@ settings:
 	color: var(--text-normal);
 }
 
-/* Streak row — lucide flame/trophy glyphs + text + optional best-N.
-   `flex-wrap` lets the row relax onto a second line on very narrow sidebars
-   without the icons splitting into an ugly two-row stack by themselves. */
 /* Mini-stats — week / month / year totals under the streak row. Stacked
    value-over-label chips keep the horizontal footprint tiny (each chip is
    only as wide as its number), so the row stays on one line even on narrow
@@ -647,6 +658,9 @@ settings:
 	text-transform: uppercase;
 }
 
+/* Streak row — lucide flame/trophy glyphs + text + optional best-N.
+   `flex-wrap` lets the row relax onto a second line on very narrow sidebars
+   without the icons splitting into an ugly two-row stack by themselves. */
 .vault-pulse-detail-streak {
 	position: relative;
 	display: inline-flex;

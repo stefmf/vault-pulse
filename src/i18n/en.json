@@ -6,8 +6,12 @@
 		"title": "Vault Pulse"
 	},
 	"commands": {
-		"openHeatmap": "Open heatmap",
+		"openHeatmap": "Open calendar and heatmap",
 		"jumpToToday": "Jump to today"
+	},
+	"legend": {
+		"less": "Less",
+		"more": "More"
 	},
 	"calendar": {
 		"prevMonth": "Previous month",
@@ -19,6 +23,8 @@
 		"modified": "Modified",
 		"files_one": "{count} file",
 		"files_other": "{count} files",
+		"dayCount_one": "{date} · {count} file",
+		"dayCount_other": "{date} · {count} files",
 		"streak": "{days}-day streak",
 		"streakAria": "{days}-day streak",
 		"streakAriaPending": "{days}-day streak, today is empty",

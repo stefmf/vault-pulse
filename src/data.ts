@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { normalizePath } from "obsidian";
 import type { App, CachedMetadata, TFile } from "obsidian";
 import { computeGridStart, toISODate } from "./dateUtils";
 import type { ActivityDay, ActivityMap } from "./types";
@@ -46,16 +47,20 @@ export interface BuildOptions {
 	filters?: ParsedFilters;
 }
 
-/** Normalize raw CSV settings into the form `buildVaultActivity` consumes. */
+/**
+ * Normalize raw CSV settings into the form `buildVaultActivity` consumes.
+ * Folder paths go through `normalizePath`, so `Archive/` and `/Archive`
+ * match like `Archive`.
+ */
 export function parseFilters(settings: VaultPulseSettings): ParsedFilters {
 	return {
-		excludedFolders: parseCsvList(settings.excludeFolders),
+		excludedFolders: parseCsvList(settings.excludeFolders).map(normalizePath),
 		includedTags: parseCsvList(settings.includeTags).map(normalizeTag),
 	};
 }
 
 export interface VaultActivity {
-	/** Windowed by the heatmap window; each entry has `files[]` + `count`. */
+	/** Per-day counts for the days the heatmap grid shows. */
 	windowed: ActivityMap;
 	/** Unbounded per-day counts across the whole vault, for streak walks + stats. */
 	allActivity: Map<string, number>;
@@ -74,13 +79,11 @@ export interface DayNotes {
 }
 
 /**
- * Walk the vault once and produce BOTH the windowed activity map (for
- * heatmap rendering) and the unbounded per-day count map (for streak walks
- * + mini-stats totals). Previously `buildActivityMap` and `buildAllActivity`
- * each did their own full pass, doubling the work on every file event.
- *
- * Filter semantics are identical to the prior single-purpose functions
- * (excludeFolders + includeTags + activitySource).
+ * Walk the vault once and produce the windowed count map (heatmap and
+ * sparkline), the unbounded per-day counts (streak walks and mini stats),
+ * and the per-day created / modified notes (calendar and day list). Exclude
+ * folders and Include tags apply to all three; Activity source applies to
+ * the counts only.
  *
  * `today` and `anchor` can differ when the user pages the heatmap backward:
  * `today` still caps `allActivity` at the real calendar day, while `anchor`
@@ -105,7 +108,7 @@ export function buildVaultActivity(
 		cursor = cursor.plus({ days: 1 })
 	) {
 		const iso = toISODate(cursor);
-		const day: ActivityDay = { isoDate: iso, files: [], count: 0 };
+		const day: ActivityDay = { isoDate: iso, count: 0 };
 		windowed.set(iso, day);
 	}
 
@@ -155,10 +158,7 @@ export function buildVaultActivity(
 			// Windowed view — heatmap + sparkline render only these.
 			if (iso < gridStartIso || iso > anchorIso) continue;
 			const day = windowed.get(iso);
-			if (day) {
-				day.files.push(file);
-				day.count++;
-			}
+			if (day) day.count++;
 		}
 	}
 
@@ -166,28 +166,26 @@ export function buildVaultActivity(
 }
 
 /**
- * Lightweight content fingerprint of a vault scan. Cheap to compute (one
- * pass over the windowed map + one pass over `allActivity.values()`) and
- * cheap to compare (string equality). Used by the view to short-circuit
- * the entire render path when an event fires but nothing the heatmap shows
- * has actually changed — e.g. Obsidian-internal cache churn from frontmatter
- * reads that don't bump `created` / `updated`.
+ * Content fingerprint of a scan's counts, compared as a string. Used by the
+ * view to skip the render path when an event changes nothing it draws,
+ * e.g. Obsidian's cache churn from reads that don't move `created` /
+ * `updated`.
  *
- * Two different scans produce identical fingerprints only when they would
- * render identically: every windowed day's count matches AND `allActivity`
- * has the same total + same number of distinct days. Beyond-window changes
- * surface in the size + sum.
+ * Covers every windowed day's count and every day in `allActivity`, so a
+ * note moving between two days outside the window still changes it (the
+ * streaks and mini stats read those days). `allActivity` is sorted because
+ * its insertion order follows the vault's file order.
  */
 export function fingerprintActivity(
 	windowed: ActivityMap,
 	allActivity: Map<string, number>
 ): string {
-	const parts: string[] = [`a:${allActivity.size}`];
-	let allSum = 0;
-	for (const n of allActivity.values()) allSum += n;
-	parts.push(`s:${allSum}`);
+	const parts: string[] = [];
 	for (const [iso, day] of windowed) parts.push(`${iso}=${day.count}`);
-	return parts.join("|");
+	parts.push("|");
+	const days = [...allActivity.keys()].sort();
+	for (const iso of days) parts.push(`${iso}=${allActivity.get(iso)}`);
+	return parts.join(",");
 }
 
 /**
@@ -205,19 +203,6 @@ export function buildActivityMap(
 		today: pinned,
 		anchor: pinned,
 	}).windowed;
-}
-
-/**
- * Thin wrapper: returns just `allActivity`. Per-day file counts across the
- * WHOLE vault (not just the heatmap window). Streak walkers can still treat
- * this as a set via `.has(iso)`.
- */
-export function buildAllActivity(
-	source: DataSource,
-	settings: VaultPulseSettings,
-	options: BuildOptions = {}
-): Map<string, number> {
-	return buildVaultActivity(source, settings, options).allActivity;
 }
 
 export function extractDates(

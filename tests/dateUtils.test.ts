@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DateTime } from "luxon";
 import {
-	GRID_COLS,
 	computeGridStart,
 	computeMonthLabels,
 	toISODate,
@@ -108,7 +107,7 @@ describe("totalColumns", () => {
 		]) {
 			const today = DateTime.fromISO(iso);
 			const gridStart = computeGridStart(today, 0);
-			expect(totalColumns(gridStart, today)).toBe(GRID_COLS);
+			expect(totalColumns(gridStart, today)).toBe(53);
 		}
 	});
 });

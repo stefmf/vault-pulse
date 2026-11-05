@@ -59,6 +59,19 @@ describe("renderCalendar", () => {
 		expect(c.querySelectorAll("[data-action]")).toHaveLength(2);
 	});
 
+	it("orders the weekday header from the week start", () => {
+		const weekdays = (weekStart: 0 | 1) => {
+			const opts = options({ weekStart });
+			renderCalendar(opts);
+			return Array.from(
+				opts.container.querySelectorAll(".vault-pulse-calendar-weekday"),
+				(el) => el.textContent
+			);
+		};
+		expect(weekdays(0)).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+		expect(weekdays(1)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+	});
+
 	it("marks adjacent-month days", () => {
 		const opts = options({ weekStart: 1 });
 		renderCalendar(opts);
@@ -122,6 +135,23 @@ describe("updateCalendarCells", () => {
 		expect(cell(opts.container, "2026-11-03").getAttribute("aria-pressed")).toBe("false");
 		expect(dotCount(after, "is-created")).toBe(1);
 		expect(dotCount(after, "is-modified")).toBe(0);
+	});
+
+	it("puts the tab stop on the 1st when neither the selection nor today is shown", () => {
+		const opts = options({ month: DateTime.fromISO("2026-02-01"), selectedIso: "2026-11-03" });
+		renderCalendar(opts);
+		const tabStops = Array.from(
+			opts.container.querySelectorAll<HTMLElement>(".vault-pulse-calendar-day")
+		).filter((el) => el.tabIndex === 0);
+		expect(tabStops.map((el) => el.dataset.date)).toEqual(["2026-02-01"]);
+	});
+
+	it("moves today when the date rolls over", () => {
+		const opts = options();
+		renderCalendar(opts);
+		updateCalendarCells({ ...opts, todayIso: "2026-11-06" });
+		expect(cell(opts.container, "2026-11-05").classList.contains("is-today")).toBe(false);
+		expect(cell(opts.container, "2026-11-06").classList.contains("is-today")).toBe(true);
 	});
 
 	it("puts the tab stop on today when the selection isn't in the shown month", () => {

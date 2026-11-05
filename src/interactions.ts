@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { setTooltip } from "obsidian";
-import { toISODate } from "./dateUtils";
+import { dayCountLabel, toISODate } from "./dateUtils";
 
 export interface InteractionOptions {
 	container: HTMLElement;
@@ -32,10 +32,7 @@ export function attachInteractions(options: InteractionOptions): InteractionHand
 		const iso = cell.dataset.date;
 		if (!iso) return;
 		const count = Number(cell.dataset.count ?? 0);
-		const tooltip = `${DateTime.fromISO(iso).toFormat("MMM d")} · ${count} ${
-			count === 1 ? "file" : "files"
-		}`;
-		setTooltip(cell, tooltip, { placement: "top" });
+		setTooltip(cell, dayCountLabel(DateTime.fromISO(iso), count), { placement: "top" });
 	};
 
 	const onClick = (evt: MouseEvent) => {
@@ -82,7 +79,12 @@ export function attachInteractions(options: InteractionOptions): InteractionHand
 	};
 }
 
+/**
+ * The heatmap cell under an event target. Uses Obsidian's cross-window
+ * `instanceOf`, since `instanceof HTMLElement` is false in a pop-out window.
+ */
 function cellFrom(target: EventTarget | null): HTMLElement | null {
-	if (!(target instanceof HTMLElement)) return null;
-	return target.closest<HTMLElement>(".vault-pulse-cell");
+	const node = target as Node | null;
+	if (!node?.instanceOf(HTMLElement)) return null;
+	return node.closest<HTMLElement>(".vault-pulse-cell");
 }
