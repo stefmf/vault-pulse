@@ -1,38 +1,54 @@
-import tsParser from "@typescript-eslint/parser";
+import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
-// Minimal, non-typed ruleset covering the bot's required checks.
-// Typed rules (no-plugin-as-component, etc.) need a tsconfig with types;
-// omit them here to avoid the parser-services dependency.
-export default [
+// The rule set the community directory's scanner builds on, plus sentence
+// case on UI strings (in src/i18n/en.json and any left in TypeScript).
+// Run from the repo root so manifest.json, package.json and LICENSE are linted.
+const sentenceCase = {
+	enforceCamelCaseLower: true,
+	// Setting brands replaces the rule's defaults, so the ones used here are restated.
+	brands: ["Vault Pulse", "Obsidian", "GitHub", "Markdown"],
+	// Example folder paths in a description; prefix matching is case-sensitive.
+	ignoreWords: ["Archive", "My-Archive"],
+	// Lowercase unit labels shown after a number in the stat chips ("12 week").
+	ignoreRegex: ["^(week|month|year)$"],
+};
+
+export default defineConfig([
+	globalIgnores([
+		"node_modules",
+		"main.js",
+		"test-vault",
+		"coverage",
+		"esbuild.config.mjs",
+		"version-bump.mjs",
+		"scripts",
+		"tests",
+		"vitest.config.ts",
+	]),
+	...obsidianmd.configs.recommendedWithLocalesEn,
 	{
-		files: ["src/**/*.ts"],
 		languageOptions: {
-			parser: tsParser,
-			parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-		},
-		plugins: { obsidianmd },
-		rules: {
-			"obsidianmd/ui/sentence-case": [
-				"error",
-				{ enforceCamelCaseLower: true },
-			],
-			"obsidianmd/no-static-styles-assignment": "error",
-			"obsidianmd/detach-leaves": "error",
-			"obsidianmd/no-sample-code": "error",
-			"obsidianmd/no-tfile-tfolder-cast": "error",
-			"obsidianmd/object-assign": "error",
-			"obsidianmd/commands/no-command-in-command-id": "error",
-			"obsidianmd/commands/no-command-in-command-name": "error",
-			"obsidianmd/commands/no-plugin-id-in-command-id": "error",
-			"obsidianmd/commands/no-plugin-name-in-command-name": "error",
-			"obsidianmd/regex-lookbehind": "error",
-			"obsidianmd/settings-tab/no-manual-html-headings": "error",
-			"obsidianmd/settings-tab/no-problematic-settings-headings": "error",
-			"obsidianmd/vault/iterate": "error",
-			"obsidianmd/hardcoded-config-path": "error",
-			"obsidianmd/prefer-abstract-input-suggest": "error",
-			"obsidianmd/no-forbidden-elements": "error",
+			parserOptions: {
+				projectService: {
+					allowDefaultProject: ["eslint.config.mjs"],
+				},
+			},
 		},
 	},
-];
+	{
+		files: ["src/**/*.ts"],
+		rules: {
+			"obsidianmd/ui/sentence-case": ["error", sentenceCase],
+			// Declarative settings need Obsidian 1.13; below that minAppVersion every
+			// setting would be written twice. Revisit if minAppVersion reaches 1.13.
+			"obsidianmd/settings-tab/prefer-setting-definitions": "off",
+		},
+	},
+	{
+		files: ["src/i18n/en.json"],
+		rules: {
+			"obsidianmd/ui/sentence-case-json": ["error", sentenceCase],
+		},
+	},
+]);
