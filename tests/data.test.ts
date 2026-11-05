@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { DateTime } from "luxon";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { DateTime, Settings as LuxonSettings, type Zone } from "luxon";
 import { TFile, type CachedMetadata } from "obsidian";
 import {
 	buildActivityMap,
@@ -391,4 +391,101 @@ describe("parseFilters + buildVaultActivity reuse", () => {
 			fingerprintActivity(preParsed.windowed, preParsed.allActivity)
 		);
 	});
+});
+
+describe("byDay (calendar index)", () => {
+	// Pinned inside the test, so CI checks both sides of UTC whatever its zone.
+	for (const zone of ["America/New_York", "Pacific/Auckland"]) {
+		describe(zone, () => {
+			let previous: Zone;
+			beforeEach(() => {
+				previous = LuxonSettings.defaultZone;
+				LuxonSettings.defaultZone = zone;
+			});
+			afterEach(() => {
+				LuxonSettings.defaultZone = previous;
+			});
+
+			const at = (iso: string) => DateTime.fromISO(iso).toMillis();
+			const today = () => DateTime.fromISO("2026-11-05").startOf("day");
+			const scan = (
+				files: TFile[],
+				frontmatter: Record<string, Record<string, unknown>>,
+				overrides: Partial<VaultPulseSettings> = {}
+			) =>
+				buildVaultActivity(
+					mkSource(files, (f) => {
+						const fm = frontmatter[f.path];
+						return fm ? { frontmatter: fm } : null;
+					}),
+					settings(overrides),
+					{ today: today() }
+				).byDay;
+
+			it("puts a date-only created: on that day, not on the reset birth time", () => {
+				expect(DateTime.local().zoneName).toBe(zone);
+				// The Edit-tool case: birth time and mtime both reset to the edit day.
+				const file = mkFile("a.md", at("2026-11-05T09:00"), at("2026-11-05T09:00"));
+				const byDay = scan([file], { "a.md": { created: "2026-10-30" } });
+				expect(byDay.get("2026-10-30")?.created).toEqual([file]);
+				expect(byDay.get("2026-11-05")?.modified).toEqual([file]);
+				expect(byDay.get("2026-11-05")?.created ?? []).toEqual([]);
+			});
+
+			it("falls back to ctime when created: is missing or unparseable", () => {
+				const missing = mkFile("m.md", at("2026-11-01T23:30"), at("2026-11-03T08:00"));
+				const template = mkFile("t.md", at("2026-11-02T00:30"), at("2026-11-03T08:00"));
+				const byDay = scan([missing, template], {
+					"t.md": { created: '<% tp.date.now("YYYY-MM-DD") %>' },
+				});
+				expect(byDay.get("2026-11-01")?.created).toEqual([missing]);
+				expect(byDay.get("2026-11-02")?.created).toEqual([template]);
+			});
+
+			it("takes the modified day from updated: or from mtime, per the setting", () => {
+				const file = mkFile("a.md", 0, at("2026-11-04T15:00"));
+				const fm = { "a.md": { created: "2026-01-10", updated: "2026-09-01" } };
+				const viaUpdated = scan([file], fm, { modifiedDate: "updated" });
+				expect(viaUpdated.get("2026-09-01")?.modified).toEqual([file]);
+				expect(viaUpdated.has("2026-11-04")).toBe(false);
+
+				const viaMtime = scan([file], fm, { modifiedDate: "mtime" });
+				expect(viaMtime.get("2026-11-04")?.modified).toEqual([file]);
+				expect(viaMtime.has("2026-09-01")).toBe(false);
+			});
+
+			it("lists a note created and modified on the same day only as created", () => {
+				const file = mkFile("a.md", 0, at("2026-11-04T15:00"));
+				const byDay = scan([file], { "a.md": { created: "2026-11-04" } });
+				expect(byDay.get("2026-11-04")).toEqual({ created: [file], modified: [] });
+			});
+
+			it("applies Exclude folders and Include tags", () => {
+				const kept = mkFile("notes/a.md", 0, at("2026-11-04T15:00"));
+				const archived = mkFile("Archive/b.md", 0, at("2026-11-04T15:00"));
+				const untagged = mkFile("notes/c.md", 0, at("2026-11-04T15:00"));
+				const byDay = scan(
+					[kept, archived, untagged],
+					{
+						"notes/a.md": { created: "2026-11-04", tags: ["project"] },
+						"Archive/b.md": { created: "2026-11-04", tags: ["project"] },
+						"notes/c.md": { created: "2026-11-04" },
+					},
+					{ excludeFolders: "Archive", includeTags: "project" }
+				);
+				expect(byDay.get("2026-11-04")?.created).toEqual([kept]);
+			});
+
+			it("keeps a future date in byDay but not in allActivity", () => {
+				const file = mkFile("a.md", 0, at("2026-11-04T15:00"));
+				const result = buildVaultActivity(
+					mkSource([file], () => ({ frontmatter: { created: "2027-01-01" } })),
+					settings({ activitySource: "created" }),
+					{ today: today() }
+				);
+				expect(result.byDay.get("2027-01-01")?.created).toEqual([file]);
+				expect(result.allActivity.has("2027-01-01")).toBe(false);
+			});
+		});
+	}
 });

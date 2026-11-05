@@ -9,7 +9,14 @@
 		"openHeatmap": "Open heatmap",
 		"jumpToToday": "Jump to today"
 	},
+	"calendar": {
+		"prevMonth": "Previous month",
+		"nextMonth": "Next month",
+		"dayAria": "{date}: {created} created, {modified} modified"
+	},
 	"detail": {
+		"created": "Created",
+		"modified": "Modified",
 		"files_one": "{count} file",
 		"files_other": "{count} files",
 		"streak": "{days}-day streak",
@@ -33,6 +40,10 @@
 		"activitySourceCombined": "Created or modified",
 		"activitySourceModified": "Modified only",
 		"activitySourceCreated": "Created only",
+		"modifiedDate": "Modified date",
+		"modifiedDateDesc": "Which date counts as a note's last change, in the calendar and the heatmap. The updated property suits vaults where a plugin keeps it current; file time is the last write on this device.",
+		"modifiedDateUpdated": "Updated property, then file time",
+		"modifiedDateMtime": "File time only",
 		"colorPalette": "Color palette",
 		"colorPaletteDesc": "Color scheme for active cells. Auto follows your Obsidian theme's interactive-accent color; named palettes use their own hues.",
 		"colorPaletteTheme": "Auto (theme accent)",
@@ -58,6 +69,11 @@
 		"includeTagsDesc": "Comma-separated list of tags. If set, only files with at least one of these tags count. Leave empty to include all files. Leading # is optional.",
 		"includeTagsPlaceholder": "Project, journal",
 		"visibility": "Visibility",
+		"showCalendar": "Show calendar",
+		"showCalendarDesc": "Month calendar with a dot for each note created or modified that day.",
+		"showHeatmap": "Show heatmap",
+		"showHeatmapDesc": "Activity heatmap with its pager, sparkline and legend.",
+		"lastSectionDesc": "At least one of the calendar and the heatmap stays visible.",
 		"showSparkline": "Show sparkline",
 		"showSparklineDesc": "30-day compact bar chart above the legend.",
 		"showStreakCounter": "Show streak counter",

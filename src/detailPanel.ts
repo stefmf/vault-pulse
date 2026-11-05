@@ -1,9 +1,11 @@
 import { DateTime } from "luxon";
-import { Menu, setIcon, TFile } from "obsidian";
+import { Keymap, Menu, setIcon, TFile, type PaneType } from "obsidian";
 import { t } from "./i18n";
 import { computeStreakSymbols } from "./streakSymbols";
 import type { CarryOverStreak } from "./streaks";
-import type { ActivityDay } from "./types";
+
+/** Where to open a note: false for the current tab, else Obsidian's pane type. */
+export type OpenTarget = PaneType | boolean;
 
 export interface RecentStats {
 	week: number;
@@ -14,7 +16,10 @@ export interface RecentStats {
 export interface DetailPanelOptions {
 	container: HTMLElement;
 	iso: string | null;
-	day: ActivityDay | undefined;
+	/** Notes created on the selected day. */
+	created: TFile[];
+	/** Notes last modified on the selected day, excluding ones created that day. */
+	modified: TFile[];
 	streakCount: number;
 	streakStartIso: string | null;
 	longestStreak: number;
@@ -29,21 +34,23 @@ export interface DetailPanelOptions {
 	 * nothing to carry over (either today is active or no prior run exists).
 	 */
 	carryOver?: CarryOverStreak | null;
-	onOpen: (file: TFile) => void;
+	onOpen: (file: TFile, target: OpenTarget) => void;
 	onJumpToToday: () => void;
 	onHoverPreview: (file: TFile, evt: MouseEvent, targetEl: HTMLElement) => void;
 }
 
 /**
- * Render the detail panel below the heatmap. Header shows date, count, streak
- * icons with lifetime-best and "Today →" button; list shows the day's files
- * with stagger fade-in and ⌘-hover previews.
+ * Render the detail panel below the calendar and heatmap. Header shows date,
+ * count, streak icons with lifetime-best and "Today →" button; the list shows
+ * the day's notes in a Created group and a Modified group, with stagger
+ * fade-in and ⌘-hover previews.
  */
 export function renderDetailPanel(options: DetailPanelOptions): void {
 	const {
 		container,
 		iso,
-		day,
+		created,
+		modified,
 		streakCount,
 		streakStartIso,
 		longestStreak,
@@ -68,7 +75,7 @@ export function renderDetailPanel(options: DetailPanelOptions): void {
 	}
 
 	const dt = DateTime.fromISO(iso);
-	const count = day?.count ?? 0;
+	const count = created.length + modified.length;
 
 	buildHeader(container, {
 		dt,
@@ -84,7 +91,7 @@ export function renderDetailPanel(options: DetailPanelOptions): void {
 		onJumpToToday,
 	});
 
-	if (!day || day.count === 0) {
+	if (count === 0) {
 		container.createDiv({
 			cls: "vault-pulse-detail-placeholder",
 			text: t("detail.noActivity"),
@@ -92,11 +99,21 @@ export function renderDetailPanel(options: DetailPanelOptions): void {
 		return;
 	}
 
+	// One list element, so the elastic scroll the view attaches to the first
+	// `.vault-pulse-detail-list` covers both groups.
 	const list = container.createDiv({ cls: "vault-pulse-detail-list" });
-
-	day.files.forEach((file, idx) => {
-		buildFileRow(list, file, idx, onOpen, onHoverPreview);
-	});
+	let idx = 0;
+	const groups: Array<[string, TFile[]]> = [
+		[t("detail.created"), created],
+		[t("detail.modified"), modified],
+	];
+	for (const [label, files] of groups) {
+		if (files.length === 0) continue;
+		list.createDiv({ cls: "vault-pulse-detail-group-title", text: label });
+		for (const file of files) {
+			buildFileRow(list, file, idx++, onOpen, onHoverPreview);
+		}
+	}
 }
 
 interface HeaderOptions {
@@ -310,7 +327,7 @@ function buildFileRow(
 	parent: HTMLElement,
 	file: TFile,
 	idx: number,
-	onOpen: (file: TFile) => void,
+	onOpen: (file: TFile, target: OpenTarget) => void,
 	onHoverPreview: (file: TFile, evt: MouseEvent, targetEl: HTMLElement) => void
 ): HTMLElement {
 	const row = parent.createDiv({ cls: "vault-pulse-detail-row" });
@@ -328,9 +345,10 @@ function buildFileRow(
 		text: file.basename,
 	});
 
-	const open = (evt: Event) => {
+	// Cmd/Ctrl-click or Cmd/Ctrl-Enter opens a new tab, as Obsidian's links do.
+	const open = (evt: MouseEvent | KeyboardEvent) => {
 		evt.stopPropagation();
-		onOpen(file);
+		onOpen(file, Keymap.isModEvent(evt));
 	};
 	row.addEventListener("click", open);
 	row.addEventListener("keydown", (evt) => {

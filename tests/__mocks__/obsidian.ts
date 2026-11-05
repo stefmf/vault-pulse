@@ -53,6 +53,13 @@ export class Menu {
 	}
 	showAtMouseEvent(_evt: unknown): void {}
 }
+export type PaneType = "tab" | "split" | "window";
+export class Keymap {
+	/** Real Obsidian also maps Alt and Shift combinations to "split"/"window". */
+	static isModEvent(evt?: { metaKey?: boolean; ctrlKey?: boolean } | null): PaneType | boolean {
+		return evt && (evt.metaKey || evt.ctrlKey) ? "tab" : false;
+	}
+}
 export const setTooltip = () => undefined;
 export const setIcon = () => undefined;
 export const debounce = <T extends (...args: unknown[]) => unknown>(fn: T): T => fn;

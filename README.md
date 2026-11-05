@@ -1,6 +1,12 @@
 # Vault Pulse
 
-A GitHub-style activity heatmap for Obsidian. Renders a 53×7 grid of the last 365 days in a sidebar pane, so you can see your writing cadence at a glance — then click any day to see the exact files you touched.
+A month calendar and a GitHub-style activity heatmap for Obsidian. The calendar puts a dot on each day for every note created or modified that day. The heatmap shows a year of writing cadence in a 53×7 grid. Click a day in either and the panel below lists its notes.
+
+| Calendar, light theme | Calendar, dark theme |
+|:-----:|:-----:|
+| ![Calendar in the default light theme](docs/calendar-light.png) | ![Calendar in the default dark theme](docs/calendar-dark.png) |
+
+_Accent dots are notes created that day, grey dots notes last modified that day. The ringed day is today; the filled day is selected._
 
 | Green | Heat | Sunset |
 |:-----:|:----:|:------:|
@@ -12,16 +18,18 @@ _Three of the built-in palettes, in light and dark themes._ Auto (theme accent) 
 ## Features
 
 - **Sidebar pane** — lives in the right sidebar, collapses like any other panel.
+- **Month calendar** — one dot per note created that day and one per note last modified that day, up to three of each. The created date comes from `created:` frontmatter, so a note edited later stays on the day it was made. It's a viewer: clicking a day never creates a note.
+- **One selection, both views** — pick a day in the calendar or the heatmap and both show it: the calendar turns to that month, and the heatmap pages back if the day is off its grid.
 - **Configurable window** — 90 / 180 / 365 day heatmap; today anchored bottom-right, today's cell always outlined.
 - **Quantile-based colors** — buckets adapt to your vault size; no hardcoded thresholds.
 - **Five color palettes** — Auto (theme accent), Green (GitHub-style), **Heat** (orange → red), **Sunset** (gold → indigo), or Custom hex.
 - **Recent-30 sparkline** — compact bar chart above the legend showing the last 30 days, independent of how far you've scrolled the main grid.
-- **Detail panel** — click any day and the panel below lists the files for that day, each clickable, each ⌘-hover previewable.
+- **Detail panel** — click any day and the panel below lists its notes in two groups, Created and Modified, each clickable (⌘/Ctrl-click for a new tab), each ⌘-hover previewable.
 - **Folder / tag filters** — exclude noisy folders (e.g. `Archive`) or restrict to files carrying specific tags.
 - **Streak milestones** — lucide 🔥 flame icons at 7 / 30 / 100 days, plus a 🏆 trophy at the 1-year mark. Click the trophy to see the year-1 date.
 - **Lifetime best** — remembers your longest-ever streak so you can chase it after a break; flashes gold when you tie or beat it.
-- **Visibility toggles** — turn the sparkline and streak counter on or off independently.
-- **Style Settings support** — exposes the flame and trophy colors as editable variables when the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin is installed.
+- **Visibility toggles** — show the calendar, the heatmap or both, and turn the sparkline and streak counter on or off independently.
+- **Style Settings support** — exposes the calendar dot, flame and trophy colors as editable variables when the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin is installed.
 - **Localized** — all user-facing strings route through `src/i18n/` with English shipping today and community-contributed locales welcome.
 - **Jump to today** — command palette entry, plus a "Today →" button in the detail header when you've scrolled away.
 - **Keyboard navigation** — Tab into the grid, then ←/→ = ±week, ↑/↓ = ±day; the detail panel updates as you move.
@@ -56,10 +64,11 @@ Copy `main.js`, `manifest.json`, and `styles.css` into `<YourVault>/.obsidian/pl
 
 ## Usage
 
-Open the heatmap via the **grid** ribbon icon (left sidebar) or the command palette entry **Vault Pulse: Open heatmap**.
+Open the pane via the **grid** ribbon icon (left sidebar) or the command palette entry **Vault Pulse: Open heatmap**. The calendar sits at the top, the heatmap under it, and the day's notes at the bottom.
 
-- **Hover** a cell → tooltip: `Mon DD · N files`.
-- **Click** a cell → detail panel shows the file list for that day; click a file row to open it.
+- **Click** a calendar day → it's selected in both views and its notes are listed. The calendar's arrows change only the month shown.
+- **Hover** a heatmap cell → tooltip: `Mon DD · N files`.
+- **Click** a heatmap cell → the calendar turns to that month and the detail panel lists the day's notes; click a row to open it, ⌘/Ctrl-click for a new tab.
 - **⌘-hover** (macOS) / **Ctrl-hover** (Windows/Linux) a file row → Obsidian's native note preview popover.
 - **Tab** into the grid, then **arrow keys** to move: ←/→ = prev/next week, ↑/↓ = prev/next day.
 - **Esc** or **click outside** the pane closes nothing — the detail panel is always visible.
@@ -69,13 +78,16 @@ Open the heatmap via the **grid** ribbon icon (left sidebar) or the command pale
 
 | Setting | Options | Notes |
 |---------|---------|-------|
-| **Activity source** | Combined / Modified / Created | Default: Combined. A file counts for a day if **either** created OR updated matches that day. |
+| **Activity source** | Combined / Modified / Created | Default: Combined. A file counts for a day if **either** created OR updated matches that day. Applies to the heatmap; the calendar always shows both. |
+| **Modified date** | Updated property, then file time / File time only | Default: Updated property, then file time. Which date counts as a note's last change, in both views. Pick file time only if your `updated:` property is a manual review date rather than one a plugin keeps current. |
 | **Color palette** | Auto · Green · Heat · Sunset · Custom hex | Auto follows `--interactive-accent`. Named palettes use discrete hex values tuned for both light and dark themes. |
 | **Custom hex color** | `#RRGGBB` | Only visible when palette is "Custom". |
 | **Window length** | 90 / 180 / 365 days | Default: 365. Shorter windows narrow the grid but bring recent activity into sharper view. |
 | **Week starts on** | Sunday / Monday | Default: Sunday (matches GitHub). |
 | **Exclude folders** | Comma-separated path prefixes | e.g. `Archive, _templates`. Prefix matching: `Archive` excludes `Archive/...` but not `My-Archive/...`. Empty = include all. |
 | **Include tags** | Comma-separated tag names (leading `#` optional) | e.g. `project, journal`. If set, files must have AT LEAST ONE of these tags. Empty = include all. Reads both frontmatter `tags:` and inline `#tags`. |
+| **Show calendar** | On / Off | Default: On. Toggles the month calendar. |
+| **Show heatmap** | On / Off | Default: On. Toggles the heatmap with its pager, sparkline and legend. One of the two always stays on. |
 | **Show sparkline** | On / Off | Default: On. Toggles the 30-day bar chart above the legend. |
 | **Show streak counter** | On / Off | Default: On. Toggles the flame / trophy milestone row in the detail header. |
 | **Show mini stats** | On / Off | Default: On. Toggles the week / month / year file counts under the streak row. |
@@ -102,18 +114,22 @@ Additional:
 
 ### Frontmatter dates
 
-Vault Pulse reads `created` and `updated` from each note's frontmatter when present. Supported formats: ISO 8601 (`2026-04-13`, `2026-04-13T12:34:56`), SQL (`2026-04-13 12:34:56`), JS Date objects, and Unix millisecond epochs. Missing frontmatter falls back to the file's filesystem stat (`ctime` / `mtime`).
+Vault Pulse reads `created` and `updated` from each note's frontmatter when present. Supported formats: ISO 8601 (`2026-04-13`, `2026-04-13T12:34:56`), SQL (`2026-04-13 12:34:56`), JS Date objects, and Unix millisecond epochs. A date-only value counts on that day in your own time zone.
+
+- **Created:** `created:`, else the file's creation time (`ctime`). Prefer the frontmatter: tools that save by rewriting a file reset its creation time on every edit.
+- **Modified:** with **Modified date** on its default, `updated:`, else the file's modification time (`mtime`). With **File time only**, always `mtime`. Only the last modification is known, so a note shows on the day it was last changed. On a device that gets your vault through sync, `mtime` is when the sync wrote the file.
+- A note created and last modified on the same day counts once, as created.
 
 ## Permissions & data access
 
 Vault Pulse runs entirely on your device. It does not make network requests, send telemetry, or transmit your notes anywhere.
 
-To render the heatmap and detail panel, the plugin reads:
+To render the calendar, heatmap and detail panel, the plugin reads:
 
 - **All markdown file paths** in your vault via `app.vault.getMarkdownFiles()` — required to discover which days had writing activity.
 - **Each note's frontmatter** (`created`, `updated`, and `tags` / `tag`) via Obsidian's metadata cache — used for accurate date detection and the optional **Include tags** filter.
 - **Each note's inline tags** via the metadata cache — also used for the tag filter.
-- **Filesystem `ctime` / `mtime`** as fallbacks when frontmatter dates are absent.
+- **Filesystem `ctime` / `mtime`** as fallbacks when frontmatter dates are absent, and `mtime` alone when **Modified date** is set to file time only.
 
 The plugin does **not** read note bodies. Files inside folders listed under **Exclude folders** are skipped entirely.
 
@@ -138,6 +154,10 @@ This adapts automatically: a light vault with ~1 note/day and a heavy vault with
 - **Local development, test vault setup, seeding flags, lint/test/build commands** — see [`tests/README.md`](tests/README.md).
 - **Module responsibilities, file-level conventions** — see [`AGENTS.md`](AGENTS.md).
 - **Translations** — copy [`src/i18n/en.json`](src/i18n/en.json) to `<lang>.json`, translate values (don't rename keys or change `{placeholder}` tokens), register in [`src/i18n/index.ts`](src/i18n/index.ts), open a PR. Obsidian's `moment.locale()` auto-picks the right bundle.
+
+## Credits
+
+The calendar's look follows Liam Cain's [Calendar](https://github.com/liamcain/obsidian-calendar-plugin) plugin. Vault Pulse uses none of its code.
 
 ## License
 
