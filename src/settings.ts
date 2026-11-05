@@ -3,17 +3,22 @@ import type VaultPulsePlugin from "./main";
 import { t } from "./i18n";
 
 export type ActivitySource = "modified" | "created" | "combined";
+/** "updated": `updated:` frontmatter, then the file's mtime. "mtime": mtime only. */
+export type ModifiedDateSource = "updated" | "mtime";
 export type ColorBase = "theme" | "green" | "heat" | "sunset" | "custom";
 export type WindowDays = 90 | 180 | 365;
 
 export interface VaultPulseSettings {
 	activitySource: ActivitySource;
+	modifiedDate: ModifiedDateSource;
 	colorBase: ColorBase;
 	customHexColor: string;
 	weekStart: 0 | 1;
 	windowDays: WindowDays;
 	excludeFolders: string;
 	includeTags: string;
+	showCalendar: boolean;
+	showHeatmap: boolean;
 	showSparkline: boolean;
 	showStreakCounter: boolean;
 	showMiniStats: boolean;
@@ -23,18 +28,41 @@ export interface VaultPulseSettings {
 
 export const DEFAULT_SETTINGS: VaultPulseSettings = {
 	activitySource: "combined",
+	modifiedDate: "updated",
 	colorBase: "theme",
 	customHexColor: "#39d353",
 	weekStart: 0,
 	windowDays: 365,
 	excludeFolders: "",
 	includeTags: "",
+	showCalendar: true,
+	showHeatmap: true,
 	showSparkline: true,
 	showStreakCounter: true,
 	showMiniStats: true,
 	showStatusBar: true,
 	longestStreak: 0,
 };
+
+export interface SectionVisibility {
+	calendar: boolean;
+	heatmap: boolean;
+}
+
+/**
+ * Which pane sections render. At least one always does: if both toggles are
+ * off (for example after two synced devices each turned one off), the
+ * calendar shows. The settings tab uses the same rule to disable the toggle
+ * of the last visible section.
+ */
+export function effectiveVisibility(
+	settings: Pick<VaultPulseSettings, "showCalendar" | "showHeatmap">
+): SectionVisibility {
+	if (!settings.showCalendar && !settings.showHeatmap) {
+		return { calendar: true, heatmap: false };
+	}
+	return { calendar: settings.showCalendar, heatmap: settings.showHeatmap };
+}
 
 const HEX_COLOR_RE = /^#?[0-9a-f]{6}$/i;
 
@@ -61,6 +89,20 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.activitySource)
 					.onChange(async (value) => {
 						this.plugin.settings.activitySource = value as ActivitySource;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.modifiedDate"))
+			.setDesc(t("settings.modifiedDateDesc"))
+			.addDropdown((dd) =>
+				dd
+					.addOption("updated", t("settings.modifiedDateUpdated"))
+					.addOption("mtime", t("settings.modifiedDateMtime"))
+					.setValue(this.plugin.settings.modifiedDate)
+					.onChange(async (value) => {
+						this.plugin.settings.modifiedDate = value as ModifiedDateSource;
 						await this.plugin.saveSettings();
 					})
 			);
@@ -161,6 +203,50 @@ export class VaultPulseSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl).setName(t("settings.visibility")).setHeading();
+
+		// The toggle of the only visible section is disabled, so the pane
+		// never ends up empty. Re-render after a change to update that state.
+		const visible = effectiveVisibility(this.plugin.settings);
+		const onlyCalendar = visible.calendar && !visible.heatmap;
+		const onlyHeatmap = visible.heatmap && !visible.calendar;
+
+		new Setting(containerEl)
+			.setName(t("settings.showCalendar"))
+			.setDesc(
+				onlyCalendar ? t("settings.lastSectionDesc") : t("settings.showCalendarDesc")
+			)
+			.setDisabled(onlyCalendar)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(visible.calendar)
+					.setDisabled(onlyCalendar)
+					.onChange(async (value) => {
+						// Start from what the user sees, so a merged both-off
+						// state can't hide the calendar when the heatmap comes back.
+						this.plugin.settings.showCalendar = value;
+						this.plugin.settings.showHeatmap = visible.heatmap;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.showHeatmap"))
+			.setDesc(
+				onlyHeatmap ? t("settings.lastSectionDesc") : t("settings.showHeatmapDesc")
+			)
+			.setDisabled(onlyHeatmap)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(visible.heatmap)
+					.setDisabled(onlyHeatmap)
+					.onChange(async (value) => {
+						this.plugin.settings.showHeatmap = value;
+						this.plugin.settings.showCalendar = visible.calendar;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
 
 		new Setting(containerEl)
 			.setName(t("settings.showSparkline"))

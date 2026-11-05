@@ -1,7 +1,7 @@
 {
 	"name": "vault-pulse",
 	"version": "0.3.4",
-	"description": "A GitHub-style activity heatmap of your vault's file activity across the last 365 days.",
+	"description": "A month calendar and a GitHub-style heatmap of the notes you created and modified each day, from frontmatter dates or file times.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

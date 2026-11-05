@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import type { App, CachedMetadata, TFile } from "obsidian";
 import { computeGridStart, toISODate } from "./dateUtils";
 import type { ActivityDay, ActivityMap } from "./types";
-import type { VaultPulseSettings } from "./settings";
+import type { ModifiedDateSource, VaultPulseSettings } from "./settings";
 
 /**
  * Minimum surface of App we depend on. Keeps tests injectable without
@@ -59,6 +59,18 @@ export interface VaultActivity {
 	windowed: ActivityMap;
 	/** Unbounded per-day counts across the whole vault, for streak walks + stats. */
 	allActivity: Map<string, number>;
+	/**
+	 * Notes created and last modified on each day, across all time with no cap
+	 * at today, for the calendar and the day list. Ignores `activitySource`.
+	 * A note whose modified day equals its created day is listed only under
+	 * `created`.
+	 */
+	byDay: Map<string, DayNotes>;
+}
+
+export interface DayNotes {
+	created: TFile[];
+	modified: TFile[];
 }
 
 /**
@@ -98,6 +110,15 @@ export function buildVaultActivity(
 	}
 
 	const allActivity = new Map<string, number>();
+	const byDay = new Map<string, DayNotes>();
+	const dayNotes = (iso: string): DayNotes => {
+		let entry = byDay.get(iso);
+		if (!entry) {
+			entry = { created: [], modified: [] };
+			byDay.set(iso, entry);
+		}
+		return entry;
+	};
 
 	const filters = options.filters ?? parseFilters(settings);
 	const excludedFolders = filters.excludedFolders;
@@ -107,14 +128,21 @@ export function buildVaultActivity(
 		const cache = source.getFileCache(file);
 		if (!fileMatchesFilters(file, cache, excludedFolders, includedTags)) continue;
 
-		const { created, updated } = extractDates(file, cache);
+		const { created, updated } = extractDates(file, cache, settings.modifiedDate);
+		const createdIso = created ? toISODate(created) : null;
+		const updatedIso = updated ? toISODate(updated) : null;
+
+		if (createdIso) dayNotes(createdIso).created.push(file);
+		if (updatedIso && updatedIso !== createdIso) {
+			dayNotes(updatedIso).modified.push(file);
+		}
 
 		const touched = new Set<string>();
-		if (settings.activitySource !== "modified" && created) {
-			touched.add(toISODate(created));
+		if (settings.activitySource !== "modified" && createdIso) {
+			touched.add(createdIso);
 		}
-		if (settings.activitySource !== "created" && updated) {
-			touched.add(toISODate(updated));
+		if (settings.activitySource !== "created" && updatedIso) {
+			touched.add(updatedIso);
 		}
 
 		for (const iso of touched) {
@@ -134,7 +162,7 @@ export function buildVaultActivity(
 		}
 	}
 
-	return { windowed, allActivity };
+	return { windowed, allActivity, byDay };
 }
 
 /**
@@ -194,13 +222,15 @@ export function buildAllActivity(
 
 export function extractDates(
 	file: TFile,
-	cache: CachedMetadata | null
+	cache: CachedMetadata | null,
+	modifiedDate: ModifiedDateSource = "updated"
 ): { created: DateTime | null; updated: DateTime | null } {
 	const fm = cache?.frontmatter;
 	const created =
 		parseFrontmatterDate(fm?.created) ?? DateTime.fromMillis(file.stat.ctime);
-	const updated =
-		parseFrontmatterDate(fm?.updated) ?? DateTime.fromMillis(file.stat.mtime);
+	const fromFrontmatter =
+		modifiedDate === "updated" ? parseFrontmatterDate(fm?.updated) : null;
+	const updated = fromFrontmatter ?? DateTime.fromMillis(file.stat.mtime);
 
 	return {
 		created: created.isValid ? created.startOf("day") : null,

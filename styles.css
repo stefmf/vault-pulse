@@ -21,6 +21,20 @@ settings:
         type: variable-color
         format: hex
         default: '#eab308'
+    -
+        id: vp-calendar-created-color
+        title: Calendar created dot color
+        description: Color of the calendar dots for notes created on a day. Defaults to the theme accent.
+        type: variable-color
+        format: hex
+        default: '#8a5cf5'
+    -
+        id: vp-calendar-modified-color
+        title: Calendar modified dot color
+        description: Color of the calendar dots for notes last modified on a day. Defaults to the theme's muted text.
+        type: variable-color
+        format: hex
+        default: '#999999'
 */
 
 /* Vault Pulse — sidebar heatmap styles */
@@ -43,14 +57,173 @@ settings:
 	--vp-level-3: rgba(57, 211, 83, 0.75);
 	--vp-level-4: rgb(57, 211, 83);
 
-	--vp-streak-flame-color: var(--color-orange, #f97316);
-	--vp-streak-trophy-color: var(--color-yellow, #eab308);
+	/* Style Settings variables (--vp-streak-*-color, --vp-calendar-*-color)
+	   are set on body and only read here, with fallbacks. Declaring them on
+	   this element would shadow the body value. */
 
 	padding: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 	font-family: var(--font-interface);
+}
+
+/* Calendar — month grid above the heatmap. The look follows Liam Cain's
+   Calendar plugin: bold month, accent year, muted caps weekdays, a ringed
+   today and an accent-filled selected day. */
+.vault-pulse-calendar {
+	flex: 0 0 auto;
+	padding: var(--size-4-2) var(--size-4-3) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.vault-pulse-calendar.is-hidden,
+.vault-pulse-grid-wrapper.is-hidden,
+.vault-pulse-sparkline.is-hidden,
+.vault-pulse-legend.is-hidden {
+	display: none;
+}
+
+.vault-pulse-calendar-nav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-2);
+}
+
+.vault-pulse-calendar-title {
+	display: flex;
+	align-items: baseline;
+	gap: 0.3em;
+	font-size: var(--font-ui-large);
+	line-height: 1.2;
+	min-width: 0;
+}
+
+.vault-pulse-calendar-month {
+	font-weight: var(--font-bold);
+	color: var(--text-normal);
+}
+
+.vault-pulse-calendar-year {
+	color: var(--interactive-accent);
+}
+
+.vault-pulse-calendar-arrows {
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+/* Base look comes from Obsidian's `.clickable-icon`. */
+.vault-pulse-calendar-arrow {
+	padding: var(--size-2-2);
+}
+
+.vault-pulse-calendar-arrow svg {
+	width: 16px;
+	height: 16px;
+}
+
+.vault-pulse-calendar-grid {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 2px;
+}
+
+.vault-pulse-calendar-weekday {
+	padding: 4px 0;
+	font-size: 0.6em;
+	letter-spacing: 1px;
+	text-align: center;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.vault-pulse-calendar-day {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	min-height: 32px;
+	padding: 4px 1px;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+	cursor: pointer;
+	transition:
+		background-color 100ms ease-in,
+		color 100ms ease-in;
+}
+
+.vault-pulse-calendar-day:hover {
+	background: var(--background-modifier-hover);
+}
+
+.vault-pulse-calendar-day:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.vault-pulse-calendar-day.is-adjacent {
+	opacity: 0.25;
+}
+
+.vault-pulse-calendar-day.is-today {
+	color: var(--interactive-accent);
+	font-weight: 600;
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+/* The selected day is marked with aria-pressed rather than `.is-selected`,
+   which some themes restyle globally. */
+.vault-pulse-calendar-day[aria-pressed="true"] {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.vault-pulse-calendar-day[aria-pressed="true"].is-today {
+	box-shadow: inset 0 0 0 2px var(--text-on-accent);
+}
+
+.vault-pulse-calendar-dots {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 2px 3px;
+	min-height: 4px;
+}
+
+.vault-pulse-calendar-dot-group {
+	display: inline-flex;
+	gap: 2px;
+}
+
+.vault-pulse-calendar-dot {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+}
+
+.vault-pulse-calendar-dot.is-created {
+	background: var(--vp-calendar-created-color, var(--interactive-accent));
+}
+
+.vault-pulse-calendar-dot.is-modified {
+	background: var(--vp-calendar-modified-color, var(--text-muted));
+}
+
+/* On the accent-filled selected day, both kinds switch to the on-accent
+   color and stay apart by fill: created solid, modified hollow. */
+.vault-pulse-calendar-day[aria-pressed="true"] .vault-pulse-calendar-dot.is-created {
+	background: var(--text-on-accent);
+}
+
+.vault-pulse-calendar-day[aria-pressed="true"] .vault-pulse-calendar-dot.is-modified {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--text-on-accent);
 }
 
 .vault-pulse-grid-wrapper {
@@ -515,11 +688,11 @@ settings:
 }
 
 .vault-pulse-streak-icon[data-kind="flame"] {
-	color: var(--vp-streak-flame-color);
+	color: var(--vp-streak-flame-color, var(--color-orange, #f97316));
 }
 
 .vault-pulse-streak-icon[data-kind="trophy"] {
-	color: var(--vp-streak-trophy-color);
+	color: var(--vp-streak-trophy-color, var(--color-yellow, #eab308));
 }
 
 /* Carry-over chip — today is empty but yesterday's run is still warm. Chip
@@ -555,7 +728,7 @@ settings:
 }
 
 .vault-pulse-streak-best.is-record {
-	color: var(--vp-streak-trophy-color);
+	color: var(--vp-streak-trophy-color, var(--color-yellow, #eab308));
 	animation: vp-streak-tick 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -761,6 +934,14 @@ settings:
 	white-space: nowrap;
 }
 
+.vault-pulse-detail-group-title {
+	padding: var(--size-4-2) var(--size-4-3) var(--size-4-1);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	letter-spacing: 0.02em;
+	color: var(--text-muted);
+}
+
 .vault-pulse-detail-placeholder {
 	padding: var(--size-4-4) var(--size-4-3);
 	font-size: var(--font-ui-smaller);
@@ -776,6 +957,8 @@ settings:
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.vault-pulse-calendar-day,
+	.vault-pulse-calendar-arrow,
 	.vault-pulse-cell,
 	.vault-pulse-sparkline-bar,
 	.vault-pulse-detail-row,

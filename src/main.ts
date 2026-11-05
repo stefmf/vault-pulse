@@ -77,7 +77,9 @@ export default class VaultPulsePlugin extends Plugin {
 		// ONE scan, then notifies every mounted view + repaints the status bar.
 		// 200ms trailing-edge debounce collapses bursts (e.g. an Obsidian Git
 		// commit of 50 files) into a single scan after the burst settles.
-		this.scheduleRefresh = debounce(() => this.refreshAll(), 200);
+		// `resetTimer` must be true: without it the timer runs from the first
+		// event, and a long burst scans every 200ms instead of once.
+		this.scheduleRefresh = debounce(() => this.refreshAll(), 200, true);
 
 		this.refreshStatusBarItem();
 		this.refreshAll();
@@ -106,6 +108,30 @@ export default class VaultPulsePlugin extends Plugin {
 				for (const view of this.eachView()) view.flushIfPending();
 			})
 		);
+
+		// Re-scan once the local date changes, so "today" moves at midnight
+		// even when no file event arrives.
+		let dayIso = toISODate(DateTime.local().startOf("day"));
+		this.registerInterval(
+			window.setInterval(() => {
+				const nowIso = toISODate(DateTime.local().startOf("day"));
+				if (nowIso === dayIso) return;
+				dayIso = nowIso;
+				this.refreshAll();
+			}, 60_000)
+		);
+	}
+
+	/**
+	 * Obsidian calls this when `data.json` changes on disk, for example after
+	 * a sync from another device. Without it, a running device keeps its old
+	 * settings and could write them back over the synced change.
+	 */
+	async onExternalSettingsChange(): Promise<void> {
+		await this.loadSettings();
+		this.parsedFiltersCache = null;
+		this.refreshStatusBarItem();
+		this.refreshAll();
 	}
 
 	async activateView(): Promise<void> {

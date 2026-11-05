@@ -1,9 +1,13 @@
-import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf } from "obsidian";
 import { DateTime } from "luxon";
 import type VaultPulsePlugin from "./main";
 import { HOVER_LINK_SOURCE } from "./main";
 import { buildVaultActivity, fingerprintActivity, fromApp } from "./data";
-import type { VaultActivity } from "./data";
+import type { DayNotes, VaultActivity } from "./data";
+import { renderCalendar, updateCalendarCells } from "./calendar";
+import type { CalendarOptions } from "./calendar";
+import { calendarDays, clampPagerOffset, offsetForDay } from "./calendarGrid";
+import { effectiveVisibility } from "./settings";
 import {
 	renderEmptyState,
 	renderHeatmap,
@@ -38,6 +42,7 @@ interface StreakWalk {
 
 export class VaultPulseView extends ItemView {
 	plugin: VaultPulsePlugin;
+	private calendarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
 	private pagerEl!: HTMLElement;
 	private sparklineEl!: HTMLElement;
@@ -48,8 +53,13 @@ export class VaultPulseView extends ItemView {
 	private detailElasticCleanup: (() => void) | null = null;
 	private activityMap: ActivityMap = new Map();
 	private allActivity: Map<string, number> = new Map();
+	private byDay: Map<string, DayNotes> = new Map();
 	private selectedIso: string | null = null;
 	private pagerOffsetDays = 0;
+	/** First day of the month the calendar shows. */
+	private shownMonth: DateTime = DateTime.local().startOf("month");
+	private lastCalendarStructureKey: string | null = null;
+	private heatmapWasVisible = true;
 	private previousTodaySymbols: StreakSymbols | null = null;
 	private previousSelectedStreakCount = 0;
 	private hasRenderedOnce = false;
@@ -77,6 +87,7 @@ export class VaultPulseView extends ItemView {
 	onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass("vault-pulse-view");
+		this.calendarEl = this.contentEl.createDiv("vault-pulse-calendar");
 		this.gridEl = this.contentEl.createDiv("vault-pulse-grid-wrapper");
 		this.pagerEl = this.contentEl.createDiv("vault-pulse-pager");
 		this.sparklineEl = this.contentEl.createDiv("vault-pulse-sparkline");
@@ -103,6 +114,17 @@ export class VaultPulseView extends ItemView {
 				"is-scrolled",
 				this.detailEl.scrollTop > 0
 			);
+		});
+
+		// Calendar cells and arrows are rebuilt on month changes, so their
+		// clicks are handled here, once, by delegation.
+		this.registerDomEvent(this.calendarEl, "click", (evt) => {
+			this.onCalendarActivate(evt.target);
+		});
+		this.registerDomEvent(this.calendarEl, "keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			this.onCalendarActivate(evt.target);
 		});
 
 		// Bootstrap with the plugin's already-cached scan (or a fresh one if
@@ -137,9 +159,16 @@ export class VaultPulseView extends ItemView {
 	 *   5. Otherwise, render.
 	 */
 	onDataChanged(pluginScan: VaultActivity): void {
+		// `allActivity` and `byDay` don't depend on the pager, so the plugin's
+		// scan gives them before any paged scan is chosen.
+		this.allActivity = pluginScan.allActivity;
+		this.byDay = pluginScan.byDay;
+		this.syncPagerWithVisibility();
+
 		const activeScan = this.scanForCurrentState(pluginScan);
 		this.allActivity = activeScan.allActivity;
 		this.activityMap = activeScan.windowed;
+		this.byDay = activeScan.byDay;
 		this.clampPagerOffset();
 
 		const key = this.computeRenderKey();
@@ -164,6 +193,32 @@ export class VaultPulseView extends ItemView {
 		this.doRender();
 		this.lastRenderKey = this.computeRenderKey();
 		this.pendingRender = false;
+	}
+
+	/**
+	 * A hidden heatmap stays at offset 0, so it never costs a paged scan.
+	 * When it is shown again, it pages to the window holding the selection.
+	 */
+	private syncPagerWithVisibility(): void {
+		const visible = effectiveVisibility(this.plugin.settings).heatmap;
+		if (!visible) {
+			this.pagerOffsetDays = 0;
+		} else if (!this.heatmapWasVisible && this.selectedIso) {
+			this.pagerOffsetDays = this.offsetShowing(this.selectedIso);
+		}
+		this.heatmapWasVisible = visible;
+	}
+
+	private offsetShowing(iso: string): number {
+		const settings = this.plugin.settings;
+		return offsetForDay({
+			dayIso: iso,
+			today: DateTime.local().startOf("day"),
+			windowDays: settings.windowDays,
+			weekStart: settings.weekStart,
+			currentOffset: this.pagerOffsetDays,
+			earliestIso: this.earliestActiveIso(),
+		});
 	}
 
 	private scanForCurrentState(pluginScan: VaultActivity): VaultActivity {
@@ -198,26 +253,67 @@ export class VaultPulseView extends ItemView {
 	private computeRenderKey(): string {
 		const todayIso = toISODate(DateTime.local().startOf("day"));
 		const settings = this.plugin.settings;
+		const sections = effectiveVisibility(settings);
 		const visBits = `${settings.showSparkline ? 1 : 0}${
 			settings.showStreakCounter ? 1 : 0
-		}${settings.showMiniStats ? 1 : 0}`;
+		}${settings.showMiniStats ? 1 : 0}${sections.calendar ? 1 : 0}${
+			sections.heatmap ? 1 : 0
+		}`;
 		return [
 			fingerprintActivity(this.activityMap, this.allActivity),
+			this.calendarFingerprint(),
+			this.selectedDayFingerprint(),
 			`d:${todayIso}`,
 			`sel:${this.selectedIso ?? ""}`,
 			`p:${this.pagerOffsetDays}`,
+			`m:${toISODate(this.shownMonth)}`,
+			`s:${settings.weekStart}`,
 			`v:${visBits}`,
 		].join("||");
+	}
+
+	/**
+	 * Created and modified counts for the 42 days the calendar shows. A note
+	 * whose date moves between two shown days changes this even when every
+	 * total stays the same.
+	 */
+	private calendarFingerprint(): string {
+		if (!effectiveVisibility(this.plugin.settings).calendar) return "";
+		return calendarDays(this.shownMonth, this.plugin.settings.weekStart)
+			.map((day) => {
+				const notes = this.byDay.get(day.iso);
+				return `${notes?.created.length ?? 0}.${notes?.modified.length ?? 0}`;
+			})
+			.join(",");
+	}
+
+	/** The selected day's notes by path and group, so a rename re-renders the list. */
+	private selectedDayFingerprint(): string {
+		const notes = this.selectedIso ? this.byDay.get(this.selectedIso) : undefined;
+		if (!notes) return "";
+		const paths = (files: { path: string }[]) => files.map((f) => f.path).join("\n");
+		return `${paths(notes.created)}|${paths(notes.modified)}`;
 	}
 
 	private doRender(): void {
 		const today = DateTime.local().startOf("day");
 		const windowEnd = today.minus({ days: this.pagerOffsetDays });
 		const totalFiles = this.app.vault.getMarkdownFiles().length;
+		const sections = effectiveVisibility(this.plugin.settings);
+
+		this.calendarEl.classList.toggle("is-hidden", !sections.calendar);
+		for (const el of [this.gridEl, this.sparklineEl, this.legendEl]) {
+			el.classList.toggle("is-hidden", !sections.heatmap);
+		}
 
 		if (totalFiles === 0) {
 			this.fullClearGrid();
-			renderEmptyState(this.gridEl, t("detail.emptyVault"));
+			this.calendarEl.empty();
+			this.lastCalendarStructureKey = null;
+			renderEmptyState(
+				sections.heatmap ? this.gridEl : this.calendarEl,
+				t("detail.emptyVault")
+			);
 			this.pagerEl.empty();
 			this.pagerEl.classList.add("is-hidden");
 			this.sparklineEl.empty();
@@ -227,6 +323,63 @@ export class VaultPulseView extends ItemView {
 			return;
 		}
 
+		if (!this.selectedIso) {
+			this.selectedIso = toISODate(windowEnd);
+		}
+
+		if (sections.calendar) {
+			this.renderCalendarSection();
+		} else {
+			this.calendarEl.empty();
+			this.lastCalendarStructureKey = null;
+		}
+
+		if (sections.heatmap) {
+			this.renderHeatmapSection(windowEnd);
+		} else {
+			// Hidden means not rendered: no cells, pager, sparkline or legend.
+			this.fullClearGrid();
+			this.pagerEl.empty();
+			this.pagerEl.classList.add("is-hidden");
+			this.sparklineEl.empty();
+			this.legendEl.empty();
+			this.lastStructureKey = null;
+		}
+
+		this.renderSelection();
+	}
+
+	/**
+	 * Build the calendar, or update its cells in place when the shown month
+	 * and week start are unchanged. Kept apart from the heatmap's structure
+	 * key, so a month change never rebuilds the heatmap or resets its scroll.
+	 */
+	private renderCalendarSection(): void {
+		const options = this.calendarOptions();
+		const key = `${toISODate(this.shownMonth)}|${options.weekStart}`;
+		const canUpdateInPlace =
+			key === this.lastCalendarStructureKey &&
+			this.calendarEl.querySelector(".vault-pulse-calendar-day") !== null;
+		if (canUpdateInPlace) {
+			updateCalendarCells(options);
+		} else {
+			renderCalendar(options);
+			this.lastCalendarStructureKey = key;
+		}
+	}
+
+	private calendarOptions(): CalendarOptions {
+		return {
+			container: this.calendarEl,
+			month: this.shownMonth,
+			weekStart: this.plugin.settings.weekStart,
+			todayIso: toISODate(DateTime.local().startOf("day")),
+			selectedIso: this.selectedIso,
+			byDay: this.byDay,
+		};
+	}
+
+	private renderHeatmapSection(windowEnd: DateTime): void {
 		const buckets = computeQuantileBuckets(this.activityMap);
 		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
 
@@ -277,14 +430,7 @@ export class VaultPulseView extends ItemView {
 
 			this.interactions = attachInteractions({
 				container: this.gridEl,
-				onCellSelect: (iso) => {
-					this.selectedIso = iso;
-					this.renderSelection();
-					// Selection change re-renders the detail panel only; bump
-					// the render key so the next data-driven refresh doesn't
-					// think we're still on the previous selection.
-					this.lastRenderKey = this.computeRenderKey();
-				},
+				onCellSelect: (iso) => this.selectDay(iso),
 			});
 
 			const heatmap = this.gridEl.querySelector<HTMLElement>(
@@ -303,13 +449,77 @@ export class VaultPulseView extends ItemView {
 			});
 		}
 
-		if (!this.selectedIso) {
-			this.selectedIso = toISODate(windowEnd);
-		}
-
 		this.renderPager(windowEnd);
 		renderLegend(this.legendEl);
+	}
+
+	/**
+	 * The one path for picking a day, from a calendar cell, a heatmap cell or
+	 * a sparkline bar. Both views then show it: the calendar moves to its
+	 * month, and the heatmap pages only if the day is outside its grid.
+	 */
+	private selectDay(iso: string): void {
+		const sections = effectiveVisibility(this.plugin.settings);
+		this.selectedIso = iso;
+		const month = DateTime.fromISO(iso).startOf("month");
+		const monthChanged = !month.hasSame(this.shownMonth, "month");
+		this.shownMonth = month;
+
+		if (sections.heatmap) {
+			const offset = this.offsetShowing(iso);
+			if (offset !== this.pagerOffsetDays) {
+				this.pagerOffsetDays = offset;
+				this.refresh();
+				this.revealSelectedHeatmapCell();
+				return;
+			}
+		}
+
+		if (sections.calendar && monthChanged) this.renderCalendarSection();
 		this.renderSelection();
+		if (sections.heatmap) this.revealSelectedHeatmapCell();
+		this.lastRenderKey = this.computeRenderKey();
+	}
+
+	/** Calendar arrows change the shown month only, never the selection. */
+	private shiftShownMonth(months: number): void {
+		this.shownMonth = this.shownMonth.plus({ months }).startOf("month");
+		this.renderCalendarSection();
+		this.lastRenderKey = this.computeRenderKey();
+	}
+
+	private onCalendarActivate(target: EventTarget | null): void {
+		if (!(target instanceof Element)) return;
+		const arrow = target.closest<HTMLElement>("[data-action]");
+		if (arrow) {
+			this.shiftShownMonth(arrow.dataset.action === "prev" ? -1 : 1);
+			return;
+		}
+		const cell = target.closest<HTMLElement>(".vault-pulse-calendar-day");
+		const iso = cell?.dataset.date;
+		if (iso) this.selectDay(iso);
+	}
+
+	/**
+	 * Scroll the heatmap sideways, if needed, so the selected cell is in view.
+	 * Runs after any rebuild's own scroll-to-end in the same frame.
+	 */
+	private revealSelectedHeatmapCell(): void {
+		window.requestAnimationFrame(() => {
+			if (!this.selectedIso) return;
+			const cell = this.gridEl.querySelector<HTMLElement>(
+				`.vault-pulse-cell[data-date="${this.selectedIso}"]`
+			);
+			if (!cell) return;
+			const grid = this.gridEl.getBoundingClientRect();
+			const box = cell.getBoundingClientRect();
+			const margin = box.width * 2;
+			if (box.left < grid.left) {
+				this.gridEl.scrollLeft -= grid.left - box.left + margin;
+			} else if (box.right > grid.right) {
+				this.gridEl.scrollLeft += box.right - grid.right + margin;
+			}
+		});
 	}
 
 	private fullClearGrid(): void {
@@ -345,8 +555,11 @@ export class VaultPulseView extends ItemView {
 	 */
 	scrollToToday(): void {
 		const wasPaged = this.pagerOffsetDays > 0;
+		const today = DateTime.local().startOf("day");
 		this.pagerOffsetDays = 0;
-		this.selectedIso = toISODate(DateTime.local().startOf("day"));
+		this.selectedIso = toISODate(today);
+		const monthChanged = !today.hasSame(this.shownMonth, "month");
+		this.shownMonth = today.startOf("month");
 
 		if (wasPaged) {
 			// Grid needs to rebuild around the new window end.
@@ -354,6 +567,9 @@ export class VaultPulseView extends ItemView {
 			return;
 		}
 
+		if (monthChanged && effectiveVisibility(this.plugin.settings).calendar) {
+			this.renderCalendarSection();
+		}
 		this.renderSelection();
 		this.lastRenderKey = this.computeRenderKey();
 		window.requestAnimationFrame(() => {
@@ -379,11 +595,7 @@ export class VaultPulseView extends ItemView {
 			activityMap: this.activityMap,
 			buckets,
 			today: windowEnd,
-			onSelect: (iso) => {
-				this.selectedIso = iso;
-				this.renderSelection();
-				this.lastRenderKey = this.computeRenderKey();
-			},
+			onSelect: (iso) => this.selectDay(iso),
 		});
 	}
 
@@ -422,6 +634,8 @@ export class VaultPulseView extends ItemView {
 
 		const newWindowEnd = today.minus({ days: this.pagerOffsetDays });
 		this.selectedIso = toISODate(newWindowEnd);
+		// The pager selects the window's newest day; the calendar follows it.
+		this.shownMonth = newWindowEnd.startOf("month");
 		this.refresh();
 	}
 
@@ -431,17 +645,7 @@ export class VaultPulseView extends ItemView {
 	}
 
 	private clampOffset(offset: number, today: DateTime): number {
-		const earliestIso = this.earliestActiveIso();
-		if (!earliestIso) return 0;
-		// Cap at (today − earliest) so windowEnd = today − offset never slips
-		// below the earliest active day; at the cap, earliest sits at the
-		// grid's right edge and the pager's prev button disables.
-		const earliest = DateTime.fromISO(earliestIso);
-		const maxOffset = Math.max(
-			0,
-			Math.floor(today.diff(earliest, "days").days)
-		);
-		return Math.max(0, Math.min(offset, maxOffset));
+		return clampPagerOffset(offset, today, this.earliestActiveIso());
 	}
 
 	private earliestActiveIso(): string | null {
@@ -483,12 +687,16 @@ export class VaultPulseView extends ItemView {
 
 		void this.maintainLongestStreak(selectedStreak.count);
 
+		if (effectiveVisibility(this.plugin.settings).calendar) {
+			updateCalendarCells(this.calendarOptions());
+		}
+
+		const notes = this.selectedIso ? this.byDay.get(this.selectedIso) : undefined;
 		renderDetailPanel({
 			container: this.detailEl,
 			iso: this.selectedIso,
-			day: this.selectedIso
-				? this.activityMap.get(this.selectedIso)
-				: undefined,
+			created: notes?.created ?? [],
+			modified: notes?.modified ?? [],
 			streakCount: selectedStreak.count,
 			streakStartIso: selectedStreak.startIso,
 			longestStreak: this.plugin.settings.longestStreak,
@@ -497,8 +705,8 @@ export class VaultPulseView extends ItemView {
 			showStreakCounter: this.plugin.settings.showStreakCounter,
 			showMiniStats: this.plugin.settings.showMiniStats,
 			carryOver,
-			onOpen: (file: TFile) => {
-				void this.app.workspace.openLinkText(file.path, "", false);
+			onOpen: (file, target) => {
+				void this.app.workspace.openLinkText(file.path, "", target);
 			},
 			onJumpToToday: () => this.scrollToToday(),
 			onHoverPreview: (file, evt, targetEl) => {

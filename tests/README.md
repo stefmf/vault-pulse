@@ -19,10 +19,13 @@ npm run dev              # esbuild watch — rebuilds main.js on every src/ chan
 npm run build            # tsc typecheck + production esbuild bundle
 npm test                 # vitest, run-once
 npm run test:watch       # vitest watch mode
-npm run lint:obsidian    # ObsidianReviewBot eslint rules locally — short-circuits the 6h bot loop
+npm run lint:obsidian    # the community directory scanner's eslint rules, zero warnings allowed (CI runs it too)
 npm run seed             # seed ./test-vault/ with 50 fake notes across ~90 days (default)
-npm run sync             # copy built main.js / manifest.json / styles.css into test-vault plugin folder
+npm run sync             # copy built main.js / manifest.json / styles.css into test-vault AND the personal vault
+npx vitest bench         # scan-time benchmark on a 20,000-note stub vault (not part of npm test)
 ```
+
+`npm run sync` writes to every target that exists: `test-vault/` and `~/Vaults/personal/.obsidian/plugins/vault-pulse/`. To touch only the test vault, run `npm run build && npm run seed`, which reinstalls the build there.
 
 ## Test vault
 
@@ -64,7 +67,7 @@ npm run seed -- --streak=400 --per-day=1-4        # ⌘R → grand celebration (
 
 ## Pre-push checklist
 
-ObsidianReviewBot rescans the plugin submission within 6 hours of any push to `main`. Running its rule set locally first cuts that loop to seconds:
+The community directory scans each release with eslint-plugin-obsidianmd's recommended rules. Running them locally first catches its findings before a tag:
 
 ```bash
 npm run lint:obsidian
@@ -92,8 +95,10 @@ src/
   main.ts            Plugin lifecycle, registerView, ribbon, commands, status bar widget
   view.ts            ItemView subclass, refresh orchestration, streak walk, tier burst, pager state
   renderer.ts        Pure DOM build (heatmap grid, month labels, sparkline, pager)
-  detailPanel.ts     Date header, streak icons, mini stats, file list, anniversaries menu
-  data.ts            buildVaultActivity (windowed map + unbounded counts in one pass)
+  calendar.ts        Month calendar DOM build + in-place dot / today / selection updates
+  calendarGrid.ts    Pure month-grid math, pager clamp, pager offset that shows a day
+  detailPanel.ts     Date header, streak icons, mini stats, Created / Modified file groups, anniversaries menu
+  data.ts            buildVaultActivity (windowed map, unbounded counts, per-day created/modified notes in one pass)
   dateUtils.ts       Luxon date math (grid start, week/col indices, month labels)
   colorUtils.ts      Quantile buckets + palette dispatch
   streakSymbols.ts   Pure ladder (days → flame + trophy counts)
@@ -103,8 +108,8 @@ src/
   i18n/              Locale bundles + t() helper
   settings.ts        Settings interface, defaults, PluginSettingTab
   types.ts           Shared interfaces
-tests/               vitest suites for pure modules
+tests/               vitest suites for pure modules and DOM smoke tests; scan.bench.ts benchmark
 scripts/
   seed-vault.mjs     Seeds test-vault/ with notes + installs built plugin
-  sync-plugin.mjs    Copies built files into test-vault (for fast iteration)
+  sync-plugin.mjs    Copies built files into test-vault and the personal vault
 ```
