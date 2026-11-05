@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-05
+
+Adds a month calendar to the pane and marks the settings, command ids, view type and Style Settings variable ids as stable. Every setting added here is new; existing `data.json` files keep their values and behaviour.
+
 ### Added
 
 - **Month calendar** above the heatmap. Each day shows a dot per note created that day and per note last modified that day (up to three of each). The created date comes from `created:` frontmatter, falling back to the file's creation time, so a note rewritten by an editor stays on the day it was made. Clicking a day never creates a note.
