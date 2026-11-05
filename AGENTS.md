@@ -25,7 +25,7 @@ Obsidian community plugin. A month calendar and a GitHub-style activity heatmap,
 | `src/streaks.ts` | `computeCarryOverStreak` — yesterday's still-warm streak, fires only when today is empty and yesterday capped a ≥2-day run. Drives the muted-yellow chip / today-cell tint / status-bar flame so users see their previous streak before it falls out of the live counter. |
 | `src/confetti.ts` | One-shot CSS-driven particle burst for tier crossings; `{ grand: true }` bumps piece count + gold palette for year-trophy moments. |
 | `src/dateUtils.ts` | Luxon date math: window grid start, week/col indices, month label spans. |
-| `src/colorUtils.ts` | Quantile bucketing (p25/p50/p75), theme-aware color ramp. |
+| `src/colorUtils.ts` | Quantile bucketing (p25/p50/p75), theme-aware color ramp. Auto builds the ramp in CSS from `--interactive-accent` (any color format); `level4` is also the calendar's accent, with `onLevel4` as readable text on it. The view applies the ramp on every data push, ahead of the render-key check. |
 | `src/elasticScroll.ts` | SwiftUI-tuned rubber-band scroll bounce at heatmap edges. |
 | `src/interactions.ts` | Hover tooltip, click selection, arrow-key navigation. |
 | `src/i18n/` | `en.json` + `t()` lookup + plural handling via `Intl.PluralRules`. Add a new locale as `<lang>.json` and register in `i18n/index.ts`. |

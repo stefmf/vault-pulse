@@ -159,6 +159,11 @@ export class VaultPulseView extends ItemView {
 	 *   5. Otherwise, render.
 	 */
 	onDataChanged(pluginScan: VaultActivity): void {
+		// The palette is CSS variables only, so it applies before the render
+		// key check: a palette change alone repaints both sections without a
+		// rebuild, and the calendar gets it even with the heatmap hidden.
+		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
+
 		// `allActivity` and `byDay` don't depend on the pager, so the plugin's
 		// scan gives them before any paged scan is chosen.
 		this.allActivity = pluginScan.allActivity;
@@ -381,7 +386,6 @@ export class VaultPulseView extends ItemView {
 
 	private renderHeatmapSection(windowEnd: DateTime): void {
 		const buckets = computeQuantileBuckets(this.activityMap);
-		applyRampToContainer(this.contentEl, computeColorRamp(this.plugin.settings));
 
 		const structureKey = this.computeStructureKey(windowEnd);
 		const canUpdateInPlace =
