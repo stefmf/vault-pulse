@@ -29,7 +29,7 @@ Obsidian community plugin. A month calendar and a GitHub-style activity heatmap,
 | `src/elasticScroll.ts` | SwiftUI-tuned rubber-band scroll bounce at heatmap edges. |
 | `src/interactions.ts` | Hover tooltip, click selection, arrow-key navigation. |
 | `src/i18n/` | `en.json` + `t()` lookup + plural handling via `Intl.PluralRules`. Add a new locale as `<lang>.json` and register in `i18n/index.ts`. |
-| `src/settings.ts` | `VaultPulseSettings` interface, defaults, `PluginSettingTab`. |
+| `src/settings.ts` | `VaultPulseSettings` interface, defaults, `effectiveVisibility`, and the declarative `PluginSettingTab` (`getSettingDefinitions`, Obsidian 1.13+, so settings appear in settings search). `getControlValue` / `setControlValue` convert the numeric dropdowns, keep one section visible, and save through `plugin.saveSettings()`. |
 | `src/types.ts` | Shared interfaces: `ActivityDay`, `ActivityMap`, `QuantileBuckets`, `ColorRamp`. |
 
 ## Conventions
